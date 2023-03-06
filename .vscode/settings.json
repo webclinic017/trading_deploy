@@ -1,0 +1,36 @@
+{
+    "editor.formatOnSave": false,
+    "python.formatting.provider": "black",
+    "python.linting.flake8Enabled": true,
+    "python.linting.enabled": true,
+    "python.formatting.blackArgs": [
+        "--line-length=119"
+    ],
+    "isort.args": [
+        "--profile",
+        "black"
+    ],
+    "[python]": {
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": true
+        }
+    },
+    "python.linting.flake8Args": [
+        "--max-line-length=119",
+    ],
+    "terminal.integrated.scrollback": 10000,
+    "files.watcherExclude": {
+        "**/.git/objects/**": true,
+        "**/.git/subtree-cache/**": true,
+        "**/node_modules/*/**": true
+    },
+    "files.exclude": {
+        "config": false,
+        "logs": true,
+        "pid": true,
+        "services": false,
+        "socks": true,
+        "static": true
+    },
+    
+}

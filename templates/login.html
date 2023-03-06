@@ -1,0 +1,49 @@
+
+{% extends 'nav_bar.html' %}
+
+{% load static %}
+
+{% block content %}
+<style>
+    td    {padding: 5px;}
+</style>
+<div style="margin-left:30; padding:20;">
+    <h1>Login
+        </h1>
+        <div style="margin-left:30; padding:20;">
+            <form action="" method="POST">
+                {% csrf_token %}
+                <table >
+                    <tr>
+                        <td>
+                            <label>Username :</label>
+                        </td>
+                        <td>
+                            <input type="text" name="username"></input>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <label>Password :</label>
+                        </td>
+                        <td>
+                            <input type="password" name="password"></input>
+                        </td>
+                    </tr>
+                   <tr>
+                    <td>
+                        <input type="submit" value="login"> 
+                    </td>
+                   </tr>
+                </table>
+                
+            </form>
+        </div>
+        
+        {% if error %}
+        {{ error }}
+        {% endif %}
+</div>
+{% endblock content %}
+
+dfghj

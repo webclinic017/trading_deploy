@@ -1,0 +1,54 @@
+{% load static %}
+
+<html>
+    <head>
+        
+            <!-- {% block head_favicon %} -->
+                <link rel="icon" type="image/x-icon" href="/favicon.ico">
+            <!-- {% endblock head_favicon %}
+            {% block head_css %}
+                {% block head_css_site %} -->
+                    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta2/dist/css/bootstrap.min.css" rel="stylesheet"
+                    integrity="sha384-BmbxuPwQa2lc/FVzBcNJ7UAyJxM6wuqIj61tLrc4wSX0szH/Ev+nYRRuWlolflfl" crossorigin="anonymous"> 
+                <!-- {% endblock head_css_site %}
+                    
+                {% block css_page %} -->
+                    <link href="{% static '/homepage.css' %}" rel="stylesheet">
+                <!-- {% endblock css_page %}
+
+            {% endblock head_css %} -->
+        
+        
+
+    {% block navbar %}
+    <nav class="navbar navbar-expand-lg navbar-light " >
+        <a class="navbar-brand" href="" style="margin-left:20;"> 
+            <img src="{% static '/finbyz-tech-logo.png' %}" width="140">
+            <!-- FinByz Tech -->
+        </a>
+        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNavAltMarkup"
+            aria-controls="navbarNavAltMarkup" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNavAltMarkup">
+            <div class="navbar-nav"  style="padding:10;margin-left: auto; margin-right: 20;">
+                <a class="nav-item nav-link active" href="/admin">Admin <span class="sr-only"></span></a>
+                <a class="nav-item nav-link " href="/login">
+                    {% if user.username %}
+                    <a class="nav-item nav-link " href="/logout">Logout </a>
+                    {% else %}
+                    <a class="nav-item nav-link " href="/login">Login</a>
+                    {% endif %}
+                <a class="nav-item nav-link disabled" href="">Tab2</a>
+                <a class="nav-item nav-link disabled" href="">Tab3</a>
+            </div>
+        </div>
+    </nav>
+    {% endblock navbar %}
+    </head>
+    <body>
+    {% block content%}
+    {% endblock content%}
+
+    </body>
+</html>
