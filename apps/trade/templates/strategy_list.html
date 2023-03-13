@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between bg_white_shaddow my-3">
+      <div class="d-grid place-items-center place_items_center">
+        <p class="main_title_font mx-5"><strong>Strategy List</strong></p>
+      </div>
+      <button type="button" class="btn btn-outline-primary mx-5 my-3 py-2 px-3" data-bs-toggle="modal" data-bs-target="#add_strategy_modal">Add Strategy</button>
+    </div>
+    <table class="table table-hover" width="100%" style="min-height: 70vh; overflow: hidden;">
+      <thead>
+          <tr style="height: 10px;">
+              <td width="30%"><p class="title_font"><strong>Strategy Name</strong></p></td>
+              <td width="50%"><p class="title_font"><strong>File Name</strong></p></td>
+              <td width="20%"></td>
+          </tr>
+      </thead>
+      <tbody>
+          {% for obj in object_list %}
+          <tr style="height: 10px;">
+              <td>{{ obj.name }}</td>
+              <td>{{ obj.file_name }}</td>
+              <td>
+                  <div class="d-flex justify-content-end">
+                      <button class="btn btn-danger px-2 py-1 mx-3"><i class="fa fa-eye"></i></button>
+                      <button class="btn btn-primary px-2 py-1"><i class="fa fa-pencil-square-o"></i></button>
+                  </div>
+              </td>
+          </tr>
+          {% endfor %}
+          <tr >
+            <td></td>
+            <td></td>
+            <td></td>
+        </tr>
+      </tbody>
+  </table>
+</div>
+
+ <!-- modal -->
+
+<div class="modal fade" id="add_strategy_modal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="exampleModalLabel">New Strategy</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form action='/trade/strategy/add/' method="POST">
+            {% csrf_token %}
+          <div class="mb-3">
+            <label for="strategy-name" class="col-form-label">Name:</label>
+            <input type="text" class="form-control" id="strategy-name" name="strategy_name">
+          </div>
+          <div class="mb-3">
+            <label for="file-text" class="col-form-label">File name:</label>
+            <input class="form-control" id="file-name" name="file_name">
+          </div>
+          <div class="d-flex justify-content-end">
+            <button type="submit" class="btn btn-primary">Add</button>
+          </div>
+          
+        </form>
+      </div>
+    
+    </div>
+  </div>
+</div>
+{% endblock content %}

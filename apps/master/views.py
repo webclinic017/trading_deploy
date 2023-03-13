@@ -1,43 +1,58 @@
 from django.contrib import messages
 from django.contrib.auth import authenticate, get_user_model, login, logout
-from django.contrib.auth import views as auth_views
-from django.contrib.auth.forms import AuthenticationForm
-from django.http import HttpResponse, HttpResponseRedirect
+from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
-from django.urls import reverse_lazy
-from django.views.generic import TemplateView, View
+from django.utils.decorators import method_decorator
+from django.views.generic.list import ListView
 
 User = get_user_model()
 
 
-class LoginView(View):
-    def post(self, request):
-        username = request.POST['username']
-        password = request.POST['password']
-        user = authenticate(username=username, password=password)
+@login_required()
+def home_page(request):
+    return render(request, "home.html", {})
 
+def login_page(request):
+    if request.user.is_authenticated:
+        return redirect("master:home")
+
+    if request.method == "POST":
+        username = request.POST.get("username")
+        password = request.POST.get("password")
+        user = authenticate(request, username=username, password=password)
+        print(username, password)
         if user is not None:
             login(request, user)
-            return redirect(reverse_lazy('about'), kwargs={'user': user})
+            return redirect("master:home")
         else:
-            form = AuthenticationForm()
-            return render(request, "login.html", {'form': form, 'error': 'No User Found'})
+            print("Invalid")
+            messages.info(request, "Try again! username or password is incorrect")
 
-    def get(self, request):
-        form = AuthenticationForm()
-        return render(request, "login.html", {'form': form})
+    context = {}
 
-
-class LogoutView(View):
-    def get(self, request):
-        logout(request)
-        return redirect(reverse_lazy('about'))
+    return render(request, "login.html", context)
 
 
-class AboutView(TemplateView):
-    template_name = "/home/finbyz/project/trading_deploy/templates/index.html"
+@login_required()
+def logout_page(request):
+    logout(request)
+    return redirect("master:login")
+
+@method_decorator(login_required(), name="dispatch")
+class UserList(ListView):
+    model = User
+    paginate_by: int = 25
+    template_name = "user_list.html"
+
+    def get_queryset(self):
+        return User.objects.filter(is_superuser=False)
 
 
-# def index(request):
-#     context = {}
-#     return render(request, 'templates/index.html', context)
+@method_decorator(login_required(), name="dispatch")
+class MyAccount(ListView):
+    model = User
+    paginate_by: int = 25
+    template_name = "my_account.html"
+
+    def get_queryset(self):
+        return User.objects.filter(is_superuser=False)

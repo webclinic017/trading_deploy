@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container-fluid mt-3 mt-md-5" id="app">
+  <div class="row">
+    <div class="col-12">
+      <button type="button" class="btn btn-primary float-end" onclick="updatePosition()">Update Position</button>
+    </div>
+    <div class="col-12">
+      <div class="table-responsive">
+        <table class="table table-striped table-hover">
+          <thead>
+            <tr>
+                <th>USERNAME</th>
+                <th>SYMBOL</th>
+                <th class="text-end">QTY</th>
+                <th class="text-end">LTP</th>
+                <th class="text-end">PNL</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="data in pnl_data">
+              <td scope="row">[[data.username]]</td>
+              <td>[[data.tradingsymbol]]</td>
+              <td class="text-end">[[data.net_qty]]</td>
+              <td class="text-end">[[formatNumber(data.last_price)]]</td>
+              <td :class="[[ stylePnl(data.pnl) ]]" class="text-end">
+                [[formatNumber(data.pnl)]]
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock content %} {% block custom_script %}
+<script>
+  const { createApp } = Vue;
+
+  createApp({
+    delimiters: ["[[", "]]"],
+    data() {
+      return {
+        pnl_data: [],
+      };
+    },
+    mounted: function () {
+      let ws_scheme = window.location.protocol == "https:" ? "wss://" : "ws://";
+      var ws = new WebSocket(
+        ws_scheme + window.location.host + "/ws/live_positions/"
+      );
+
+      ws.onmessage = (event) => {
+        this.pnl_data = JSON.parse(event.data);
+      };
+    },
+    methods: {
+      formatNumber(num) {
+        return parseFloat(num).toFixed(2);
+      },
+      stylePnl(num) {
+        if (num < 0) {
+          return "text-danger";
+        } else {
+          return "text-success";
+        }
+      },
+    },
+  }).mount("#app");
+
+  function updatePosition(){
+    var requestOptions = {
+      method: 'GET',
+      redirect: 'follow'
+    };
+    fetch(window.location.protocol + "//" + window.location.host + "/trade/update_position", requestOptions)
+      .then(response => response.text())
+      .catch(error => console.log('error', error));
+  }
+</script>
+{% endblock custom_script %}

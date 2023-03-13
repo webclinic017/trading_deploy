@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container-fluid  mt-5">
+    <div class="row">
+        <div class="col-md-4 col-12 d-grid" style="place-items: center;">
+            <div>
+                <h1 class="font-big">
+                    User <span class="text-blue">Details</span>
+                </h1>
+            </div>
+        </div>
+        <div class="col-md-8 col-12">
+            <form>
+                <div class="row mt-5">
+                  <div class="col-md-6 col-12">
+                    <div class="form-group">
+                        <label for="first_name">First Name</label>
+                        <input type="text" class="form-control" id="first_name" placeholder="Enter First Name" name="first_name">
+                    </div>
+                   
+                  </div>
+                  <div class="col-md-6 col-12">
+                    <div class="form-group">
+                        <label for="last_name">Last Name</label>
+                        <input type="text" class="form-control" id="last_name" placeholder="Enter Last Name" name="last_name">
+                    </div>
+                  </div>
+                </div>
+                <div class="row mt-5">
+                    <div class="col-md-6 col-12">
+                      <div class="form-group">
+                          <label for="subscription_start_date">Subscription Start Date</label>
+                          <input type="date" class="form-control" id="subscription_start_date"  name="subscription_start_date">
+                      </div>
+                    </div>
+                    <div class="col-md-6 col-12">
+                      <div class="form-group">
+                          <label for="subscription_end_date">Subscription End Date</label>
+                          <input type="date" class="form-control" id="subscription_end_date"  name="subscription_end_date">
+                      </div>
+                    </div>
+                  </div>
+                  <div class="row mt-5">
+                    <div class="col-md-6 col-12">
+                      <div class="form-group">
+                          <label for="password">Change Password</label>
+                          <input type="password" class="form-control" id="password"  name="password">
+                      </div>
+                    </div>
+                  </div>
+                  <div class="row mt-5">
+                    <div class="col-12">
+                        <div class="d-flex justify-content-md-end justify-content-start">
+                            <button type="submit" class="btn btn-primary" >Save Details</button>
+                          </div>
+                    </div>
+                  </div>
+              </form>
+        </div>
+    </div>
+</div>
+{% endblock content %}

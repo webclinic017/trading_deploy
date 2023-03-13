@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container-fluid mt-3 mt-md-5" id="app">
+  <div class="row">
+    <div class="col-12">
+      <div class="table-responsive">
+        <table class="table table-striped table-hover">
+          <thead>
+            <tr>
+                <th>TIME</th>
+                <th>PE OI</th>
+                <th>CE OI</th>
+                <th>PCR</th>
+                <th>PE C</th>
+                <th>CE C</th>
+                <th>PE-CE</th>
+                <th>STRIKE</th>
+                <th>I F</th>
+                <th>PE IV</th>
+                <th>CE IV</th>
+                <th>T IV</th>
+                <th>PE P</th>
+                <th>CE P</th>
+                <th>T P</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="data in pnl_data">
+              <td>[[getTime(data.timestamp)]]</td>
+              <td class="text-danger">[[formatNumber(data.pe_total_oi / 1000000)]]</td>
+              <td class="text-success">[[formatNumber(data.ce_total_oi  / 1000000)]]</td>
+              <td>[[formatNumber(data.pcr)]]</td>
+              <td class="text-danger">[[formatNumber(data.pe_oi_change * 100)]]<sup>[[formatNumber(data.pe_oi_change_3min * 100)]]</sup></td>
+              <td class="text-success">[[formatNumber(data.ce_oi_change * 100)]]<sup>[[formatNumber(data.ce_oi_change_3min * 100)]]</sup></td>
+              <td><span :class="[[ stylePnl(data.pe_ce_oi_change) ]]">[[formatNumber(data.pe_ce_oi_change * 100)]]</span><sup><span :class="[[ stylePnl(data.pe_ce_oi_change_3min) ]]">[[formatNumber(data.pe_ce_oi_change_3min * 100)]]</span></sup></td>
+              <td>[[data.strike]]</td>
+              <td>[[formatNumber(data.strike + data.ce_premium - data.pe_premium)]]</td>
+              <td class="text-danger">[[formatNumber(data.pe_iv * 100)]]</td>
+              <td class="text-success">[[formatNumber(data.ce_iv * 100)]]</td>
+              <td>[[formatNumber(data.total_iv * 100)]]</td>
+              <td class="text-danger">[[formatNumber(data.pe_premium)]]</td>
+              <td class="text-success">[[formatNumber(data.ce_premium)]]</td>
+              <td>[[formatNumber(data.total_premium)]]</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock content %} {% block custom_script %}
+<script>
+  const { createApp } = Vue;
+
+  createApp({
+    delimiters: ["[[", "]]"],
+    data() {
+      return {
+        pnl_data: [],
+      };
+    },
+    mounted: function () {
+      let ws_scheme = window.location.protocol == "https:" ? "wss://" : "ws://";
+      var ws = new WebSocket(
+        ws_scheme + window.location.host + "/ws/bnf_pcr/"
+      );
+
+      ws.onmessage = (event) => {
+        this.pnl_data = JSON.parse(event.data)['data'].concat(this.pnl_data);
+      };
+    },
+    methods: {
+      formatNumber(num) {
+        return parseFloat(num).toFixed(2);
+      },
+      stylePnl(num) {
+        if (num < 0) {
+          return "text-danger";
+        } else {
+          return "text-success";
+        }
+      },
+      getTime (timestamp) {
+        var timestamp = new Date(timestamp);
+        return timestamp.toLocaleTimeString('it-IT');
+      }
+    },
+  }).mount("#app");
+</script>
+{% endblock custom_script %}

@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import datetime as dt
 import json
@@ -24,6 +25,13 @@ class KotakNeoApiError(Exception):
 
 
 class KotakNeoApi(AsyncObj):
+    ORDER_STATUS = {
+        "rejected": "REJECTED",
+        "pending": "PENDING",
+        "completed": "COMPLETED",
+        "cancelled": "CANCELLED",
+    }
+
     async def __ainit__(
         self,
         neo_fin_key: str,
@@ -49,6 +57,20 @@ class KotakNeoApi(AsyncObj):
         self.opi_url = f"{self.host}/Orders/2.0"
         self.master_script_url = f"{self.host}/Files/1.0"
 
+        self.order_status_map = {
+            "put order req received": "NEW",
+            "validation pending": "PENDING",
+            "rejected": "REJECTED",
+            "open": "OPEN",
+            "open pending": "OPEN_PENDING",
+            "modified": "MODIFIED",
+            "modify pending": "MODIFY_PENDING",
+            "modify validation pending": "MODIFY_VALIDATION_PENDING",
+            "pending": "PENDING",
+            "complete": "COMPLETED",
+            "cancelled": "CANCELLED",
+        }
+
         if not self.access_token:
             await self.access_token_generate()
 
@@ -67,7 +89,6 @@ class KotakNeoApi(AsyncObj):
         payload = "grant_type=client_credentials"
 
         _, resp, _ = await http_request("POST", url=url, headers=headers, payload=payload)
-
 
         self.access_token = resp["access_token"]
 
@@ -106,7 +127,7 @@ class KotakNeoApi(AsyncObj):
             await self.access_token_generate()
             headers["Authorization"] = f"Bearer {self.access_token}"
             _, resp, _ = await http_request("POST", url, headers, payload)
-        
+
         sid = resp["data"]["sid"]
         auth = resp["data"]["token"]
 
@@ -148,7 +169,7 @@ class KotakNeoApi(AsyncObj):
         payload = json.dumps({"rid": self.rid})
 
         _, resp, _ = await http_request("POST", url, headers, payload)
-        
+
         self.sid = resp["data"]["sid"]
         self.auth = resp["data"]["token"]
         self.hs_server_id = resp["data"]["hsServerId"]
@@ -275,6 +296,7 @@ class KotakNeoApi(AsyncObj):
         if http_status == 429 or resp.get("code") == "900807":
             raise KotakNeoApiError(resp["code"], http_status, resp["message"], resp["description"])
         elif http_status == 200 and resp.get("stat") == "Not_Ok":
+            print(resp)
             raise KotakNeoApiError(resp["code"], http_status, resp["errMsg"], resp.get("description", ""))
 
         return {"message": f"Your Order has been Modified Successfully for Order No: {order_id}"}
@@ -356,6 +378,42 @@ class KotakNeoApi(AsyncObj):
 
         return resp["data"]
 
+    async def single_order_report(self, order_id, is_fno, error_message=None):
+        try:
+            data = await self.order_history(order_id)
+            columns = [
+                "activity_timestamp",
+                "exchange_order_id",
+                "filled_qty",
+                "message",
+                "qty",
+                "status",
+                "pending_qty",
+            ]
+
+            rename_columns = {
+                "flDtTm": "activity_timestamp",
+                "ordSt": "status",
+                "exchOrdId": "exchange_order_id",
+                "rejRsn": "message",
+                "unFldSz": "pending_qty",
+            }
+            df = pd.DataFrame(data)
+            df.rename(columns=rename_columns, inplace=True)
+            df["qty"] = df["qty"].astype(int)
+            df["pending_qty"] = df["pending_qty"].astype(int)
+            df["filled_qty"] = df["qty"] - df["pending_qty"]
+            df["status"] = df["status"].apply(lambda x: self.order_status_map[x])
+
+            df = df[columns].copy()
+            return df.iloc[0]
+        except Exception as e:
+            import traceback
+
+            traceback.print_exc()
+            print(e)
+            return {}
+
     async def trade_book(self):
         url = f"{self.opi_url}/quick/user/trades?sId={self.hs_server_id}"
 
@@ -374,7 +432,7 @@ class KotakNeoApi(AsyncObj):
 
         return resp["data"]
 
-    async def positons(self):
+    async def positions(self):
         url = f"{self.opi_url}/quick/user/positions?sId={self.hs_server_id}"
 
         headers = {
@@ -390,7 +448,32 @@ class KotakNeoApi(AsyncObj):
         if http_status == 429 or resp.get("code") == "900807":
             raise KotakNeoApiError(resp["code"], http_status, resp["message"], resp["description"])
 
-        return resp["data"]
+        columns = [
+            "tradingsymbol",
+            "buy_qty",
+            "sell_qty",
+            "buy_value",
+            "sell_value",
+        ]
+
+        df = pd.DataFrame(resp["data"])
+        df["flBuyQty"] = df["flBuyQty"].astype(int) + df["cfBuyQty"].astype(int)
+        df["flSellQty"] = df["flSellQty"].astype(int) + df["cfSellQty"].astype(int)
+        df["sellAmt"] = df["sellAmt"].astype(float) + df["cfSellAmt"].astype(float)
+        df["buyAmt"] = df["buyAmt"].astype(float) + df["cfBuyAmt"].astype(float)
+
+        df.rename(
+            columns={
+                "trdSym": "tradingsymbol",
+                "buyAmt": "buy_value",
+                "sellAmt": "sell_value",
+                "flBuyQty": "buy_qty",
+                "flSellQty": "sell_qty",
+            },
+            inplace=True,
+        )
+
+        return df[columns].copy()
 
     async def limits(
         self,
@@ -426,6 +509,7 @@ class KotakNeoApi(AsyncObj):
         if http_status == 429 or resp.get("code") == "900807":
             raise KotakNeoApiError(resp["code"], http_status, resp["message"], resp["description"])
         elif http_status == 200 and resp.get("stat") == "Not_Ok":
+            print(resp)
             raise KotakNeoApiError(resp["code"], http_status, resp["errMsg"], resp.get("description", ""))
 
         return resp

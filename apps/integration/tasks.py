@@ -8,11 +8,9 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from apps.integration.kite_socket.bnf_option_kws import option_connect_kws
-from apps.integration.kite_socket.bnf_spot_kws import spot_connect_kws
 from apps.integration.kite_socket.finnifty_option import fn_option_connect_kws
-from apps.integration.kite_socket.finnifty_spot import fn_spot_connect_kws
 from apps.integration.kite_socket.nifty_option import nifty_option_connect_kws
-from apps.integration.kite_socket.nifty_spot import nifty_spot_connect_kws
+from apps.integration.kite_socket.spot_kws import spot_connect_kws
 from apps.integration.models import KotakNeoApi, KotakSecuritiesApi, ZerodhaApi
 from trading.celery import app
 from utils.bs_greeks import find_greeks
@@ -58,8 +56,8 @@ def update_neo_token(self):
             send_message(f"{ct} - {neo.broker_api.user.username} Update Kotak Neo Error {e}")
 
 
-@app.task(name="Bank Nifty Spot Data", bind=True)
-def banknifty_spot_data(self):
+@app.task(name="Spot Data", bind=True)
+def spot_data(self):
     spot_connect_kws()
 
 
@@ -68,19 +66,9 @@ def banknifty_option_data(self):
     option_connect_kws()
 
 
-@app.task(name="Fin Nifty Spot Data", bind=True)
-def finnifty_spot_data(self):
-    fn_spot_connect_kws()
-
-
 @app.task(name="Fin Nifty Option Data", bind=True)
 def finnifty_option_data(self):
     fn_option_connect_kws()
-
-
-@app.task(name="Nifty Spot Data", bind=True)
-def nifty_spot_data(self):
-    nifty_spot_connect_kws()
 
 
 @app.task(name="Nifty Option Data", bind=True)

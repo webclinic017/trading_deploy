@@ -19,10 +19,9 @@ async def http_request(
 
     if not payload:
         payload = {}
-    
+
     if isinstance(payload, dict) and payload_decode:
         payload = json.dumps(payload)
-    
 
     async with ClientSession() as client:
         match method:
@@ -30,18 +29,21 @@ async def http_request(
                 async with client.post(
                     url, headers=headers, data=payload, params=query_params
                 ) as resp:
-                    if resp.headers['Content-Type'] == 'application/json':
+                    if resp.headers["Content-Type"] in [
+                        "application/json",
+                        "application/json; charset=UTF-8",
+                    ]:
                         return resp.status, await resp.json(), resp.cookies
-                    elif resp.headers['Content-Type'] == 'text/html':
+                    elif resp.headers["Content-Type"] == "text/html":
                         return resp.status, await resp.text(), resp.cookies
 
             case "GET":
                 async with client.get(
                     url, headers=headers, params=query_params
                 ) as resp:
-                    if resp.headers['Content-Type'] == 'application/json':
+                    if resp.headers["Content-Type"] == "application/json":
                         return resp.status, await resp.json(), resp.cookies
-                    elif resp.headers['Content-Type'] == 'text/csv':
+                    elif resp.headers["Content-Type"] == "text/csv":
                         return resp.status, await resp.text(), resp.cookies
             case "PUT":
                 async with client.put(

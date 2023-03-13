@@ -15,14 +15,20 @@ def on_connect(ws, response):
 
 
 def on_ticks(ws, ticks):
-    if ticks:
-        print(ticks[-1]["last_price"])
-        cache.set("BANKNIFTY_LTP", ticks[-1]["last_price"])
-
+    for i in ticks:
+        if i["instrument_token"] == 257801:
+            print(i["last_price"])
+            cache.set("FINNIFTY_LTP", i["last_price"])
+        if i["instrument_token"] == 260105:
+            print(i["last_price"])
+            cache.set("BANKNIFTY_LTP", i["last_price"])
+        if i["instrument_token"] == 256265:
+            print(i["last_price"])
+            cache.set("NIFTY_LTP", i["last_price"])
+    
     if dt.datetime.now().time() > dt.time(15, 30):
         ws.unsubscribe(ws.instrument_tokens)
         ws.close()
-        # cache.delete("BANKNIFTY_LTP")
 
 
 def on_close(ws, code, reason):
@@ -36,10 +42,8 @@ def spot_connect_kws():
     zerodha = ZerodhaApi.objects.get(broker_api__user__username=user)
 
     kite = async_to_sync(KiteExt)(user_id=zerodha.userid, token=zerodha.session_token)
-    print("CONNECTING")
-
     kws = kite.kws()
-    kws.instrument_tokens = [260105]
+    kws.instrument_tokens = [257801, 260105, 256265]
 
     kws.on_ticks = on_ticks
     kws.on_connect = on_connect

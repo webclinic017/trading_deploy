@@ -1,7 +1,56 @@
-<h1>Login</h1>
+{% extends 'base.html' %}
 
-<form action="{% url 'login' %}" method="post">
-  {% csrf_token %}
-  {{ form.as_p }}
-  <button type="submit" id="submit">Login</button>
-</form>
+{% block content %}
+<section class="ftco-section">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-7 col-lg-4">
+                <div class="login-wrap p-4 p-md-5">
+                    <div class="icon d-flex align-items-center
+                        justify-content-center">
+                        <span class="fa fa-user-o"></span>
+                    </div>
+                    <h3 class="text-center mb-4">Sign In</h3>
+                    <form action='#' method="POST">
+                        {% csrf_token %}
+                        <div class="mb-5">
+                            <label class="form-label" for="username">Username</label>
+                            <input type="text" class="form-control"
+                                id="username" name="username" placeholder="Your username">
+                        </div>
+                        <div class="mb-5">
+                            <label class="form-label" for="password">Password</label>
+                            <input type="password" class="form-control"
+                                id="password" placeholder="Password"
+                                name="password" autocomplete="current-password">
+                        </div>
+                        <div class="form-group d-md-flex">
+                          
+                            <button type="submit" class="btn btn-primary
+                                form-control btn
+                                btn-primary rounded submit px-3
+                                w-full">
+                                Sign in
+                            </button>
+                        </div>
+                        <div class="form-group d-md-flex">
+                            <div class="w-50 mt-3">
+                                <label class="checkbox-wrap checkbox-primary">Remember Me
+                                <input type="checkbox" checked="">
+                                <span class="checkmark"></span>
+                                </label>
+                                </div>
+                                <div class="w-50 text-md-right mt-3">
+                                <a href="#" class="c-blue f-500" > Forgot Password</a>
+                                </div>
+                                </div>
+                        </div>
+                    </form>
+                   
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock content %}

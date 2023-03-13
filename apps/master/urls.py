@@ -1,10 +1,11 @@
 from django.urls import path
 
-from apps.master.views import AboutView, LoginView, LogoutView
+from .views import MyAccount, UserList, home_page, login_page, logout_page
 
 urlpatterns = [
-    path('login/', LoginView.as_view(), name='login'),
-    path('logout/', LogoutView.as_view(), name='logout'),
-
-    path('', AboutView.as_view(), name='about'),
+    path("", home_page, name="home"),
+    path("login/", login_page, name="login"),
+    path("logout/", logout_page, name="logout"),
+    path("users/", UserList.as_view(), name="user_list"),
+    path("my_account/", MyAccount.as_view(), name="my_account"),
 ]

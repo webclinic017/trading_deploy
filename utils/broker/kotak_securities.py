@@ -1,8 +1,9 @@
+import asyncio
+import datetime as dt
 import random
 import string
 
 import pandas as pd
-from dateutil.parser import parse
 
 from utils.async_obj import AsyncObj
 from utils.http_request import http_request
@@ -23,6 +24,7 @@ class KotakSecuritiesApi(AsyncObj):
         consumer_key,
         access_token=None,
         consumer_secret=None,
+        session_token=None,
         ip="127.0.0.1",
         app_id="test",
         host="https://tradeapi.kotaksecurities.com/apim",
@@ -41,13 +43,18 @@ class KotakSecuritiesApi(AsyncObj):
 
         self.status_map = {
             "NEWF": "NEW_PENDING",
-            "OPN": "OPEN",
+            "CHRF": "CHANGE_PENDING",
             "CNRF": "CONFIRMATION_PENDING",
-            "TRAD": "COMPLETE",
-            "CAN": "CANCELLED"
+            'OPF': "OPEN_PENDING",
+            "OPN": "OPEN",
+            "TRAD": "COMPLETED",
+            "CAN": "CANCELLED",
         }
 
-        await self.session_init()
+        if not session_token:
+            await self.session_init()
+        else:
+            self.session_token = session_token
 
     async def generate_token(self, n=7):
         return "".join(random.choices(string.ascii_uppercase + string.digits, k=n))
@@ -101,9 +108,7 @@ class KotakSecuritiesApi(AsyncObj):
 
     async def session_2fa(self, access_code=None):
         if not hasattr(self, "one_time_token") and not self.one_time_token:
-            raise KotakSecuritiesApiError(
-                "No one time token found. Please invoke 'session_login_api' function first"
-            )
+            raise KotakSecuritiesApiError("No one time token found. Please invoke 'session_login_api' function first")
 
         url = f"{self.host}/{self.session_path}/session/2FA/oneTimeToken"
 
@@ -151,9 +156,7 @@ class KotakSecuritiesApi(AsyncObj):
         tag="string",
     ):
         if not hasattr(self, "session_token") and not self.session_token:
-            raise KotakSecuritiesApiError(
-                "No session token found. Please invoke 'login' function first"
-            )
+            raise KotakSecuritiesApiError("No session token found. Please invoke 'login' function first")
 
         match order_type:
             case "NORMAL":
@@ -209,41 +212,60 @@ class KotakSecuritiesApi(AsyncObj):
                 message = error.get("message", "")
 
                 if code == 999108 and "Insufficient Margin." in message:
-                    order_id = f"REJECTED_{await self.generate_token()}"
+                    order_id = f"REJECTED_FUND_{await self.generate_token()}"
                     return {
                         "order_id": order_id,
                         "message": f"Your Order has been Placed and Forwarded to the Exchange: {order_id}",
+                        "error_message": "Insufficient Margin. Please check your account balance.",
                     }
 
-                elif code == 999007 and "Max Order Frequency Limit reached." in message:
-                    raise KotakSecuritiesApiError(999000, "Max Order Frequency Limit reached.")
+                elif code == 2000 and "Order qty exceeds maximum order qty limit." in message:
+                    order_id = f"REJECTED_QTY_EXCEEDS_{await self.generate_token()}"
+                    return {
+                        "order_id": order_id,
+                        "message": f"Your Order has been Placed and Forwarded to the Exchange: {order_id}",
+                        "error_message": "Order qty exceeds maximum order qty limit.",
+                    }
 
-                elif (
-                    code == 1000
-                    and "Price is not within the price band limit of" in message
-                ):
+                elif code == 1000 and "Price is not within the price band limit of" in message:
+                    order_id = f"REJECTED_EXECUTION_LIMIT_EXCEEDED_{await self.generate_token()}"
                     x = message.split()
                     upper_band = x[-1]
                     lower_band = x[-3]
                     custom_message = f"Price is not within the price band limit of {lower_band} and {upper_band}"
-                    raise KotakSecuritiesApiError(999001, custom_message)
+                    return {
+                        "order_id": order_id,
+                        "message": f"Your Order has been Placed and Forwarded to the Exchange: {order_id}",
+                        "error_message": custom_message,
+                    }
 
-            print(resp)
+                elif code == 1000 and "Order Price is not within the trade execution range" in message:
+                    order_id = f"REJECTED_EXECUTION_LIMIT_EXCEEDED_{await self.generate_token()}"
+                    x = message.split()
+                    upper_band = x[-1]
+                    lower_band = x[-3]
+                    custom_message = f"Price is not within the price band limit of {lower_band} and {upper_band}"
+                    return {
+                        "order_id": order_id,
+                        "message": f"Your Order has been Placed and Forwarded to the Exchange: {order_id}",
+                        "error_message": custom_message,
+                    }
+
+                elif code == 999007 and "Max Order Frequency Limit reached." in message:
+                    raise KotakSecuritiesApiError(40000, "Max Order Frequency Limit reached.")
 
     async def modify_order(
         self,
         order_id,
         quantity,
         disclosed_quantity=0,
-        price=0,
-        trigger_price=0,
+        price=0.0,
+        trigger_price=0.0,
         order_type="NORMAL",
         validity="GFD",
     ):
         if not hasattr(self, "session_token") and not self.session_token:
-            raise KotakSecuritiesApiError(
-                "No session token found. Please invoke 'login' function first"
-            )
+            raise KotakSecuritiesApiError("No session token found. Please invoke 'login' function first")
 
         match order_type:
             case "NORMAL":
@@ -277,7 +299,7 @@ class KotakSecuritiesApi(AsyncObj):
             url=url,
             headers=headers,
             payload=payload,
-            payload_decode=True,
+            payload_decode=False,
         )
 
         if status == 200:
@@ -285,21 +307,16 @@ class KotakSecuritiesApi(AsyncObj):
             error = resp.get("fault", {})
 
             if success:
-                return {
-                    "message": f"Your Order has been Modified Successfully for Order No: {order_id}"
-                }
+                return {"message": f"Your Order has been Modified Successfully for Order No: {order_id}"}
             elif error:
                 code = error.get("code")
                 message = error.get("message", "")
 
                 if code == 999007 and "Max Order Frequency Limit reached." in message:
-                    raise KotakSecuritiesApiError(999000, "Max Order Frequency Limit reached.")
+                    raise KotakSecuritiesApiError(40000, "Max Order Frequency Limit reached.")
 
                 elif code == 999113 and "Please change the order details." in message:
-                    raise KotakSecuritiesApiError(
-                        999007,
-                        "Order Modification not allowed, Please change the order details.",
-                    )
+                    return {"message": f"Your Order has been Modified Successfully for Order No: {order_id}"}
 
                 elif code == 999113 and "Insufficient Margin." in message:
                     raise KotakSecuritiesApiError(
@@ -307,21 +324,13 @@ class KotakSecuritiesApi(AsyncObj):
                         "Your Order modification has been Rejected due to Insufficient Margin.",
                     )
 
-                elif (
-                    code == 999113
-                    and "Order Modification not allowed as current Order status is FIL"
-                    in message
-                ):
+                elif code == 999113 and "Order Modification not allowed as current Order status is FIL" in message:
                     raise KotakSecuritiesApiError(
                         999003,
                         "Order Modification not allowed as current Order status is COMPLETE.",
                     )
 
-                elif (
-                    code == 999113
-                    and "Order Modification not allowed as current Order status is CHRF"
-                    in message
-                ):
+                elif code == 999113 and "Order Modification not allowed as current Order status is CHRF" in message:
                     raise KotakSecuritiesApiError(
                         999005,
                         "Order Modification not allowed as current Order status is MODIFYING.",
@@ -333,16 +342,13 @@ class KotakSecuritiesApi(AsyncObj):
                         "Order Modification not allowed as current Order is Cancelled / Rejected.",
                     )
 
-                elif (
-                    code == 999113
-                    and "Price is not within the price band limit of" in message
-                ):
+                elif code == 999113 and "Price is not within the price band limit of" in message:
                     x = message.split()
                     upper_band = x[-1]
                     lower_band = x[-3]
                     custom_message = f"Price is not within the price band limit of {lower_band} and {upper_band}"
                     raise KotakSecuritiesApiError(999001, custom_message)
-            print(resp)
+            print("M", resp)
 
     async def cancel_order(
         self,
@@ -350,9 +356,7 @@ class KotakSecuritiesApi(AsyncObj):
         order_type="NORMAL",
     ):
         if not hasattr(self, "session_token") and not self.session_token:
-            raise KotakSecuritiesApiError(
-                "No session token found. Please invoke 'login' function first"
-            )
+            raise KotakSecuritiesApiError("No session token found. Please invoke 'login' function first")
 
         match order_type:
             case "NORMAL":
@@ -383,9 +387,7 @@ class KotakSecuritiesApi(AsyncObj):
             error = resp.get("fault", {})
 
             if success:
-                return {
-                    "message": f"Your Order has been Cancelled Successfully for Order No: {order_id}"
-                }
+                return {"message": f"Your Order has been Cancelled Successfully for Order No: {order_id}"}
 
             elif error:
                 code = error.get("code")
@@ -401,9 +403,7 @@ class KotakSecuritiesApi(AsyncObj):
 
     async def positions(self, position_type: str):
         if not hasattr(self, "session_token") and not self.session_token:
-            raise KotakSecuritiesApiError(
-                "No session token found. Please invoke 'login' function first"
-            )
+            raise KotakSecuritiesApiError("No session token found. Please invoke 'login' function first")
 
         match position_type:
             case "TODAYS":
@@ -416,9 +416,7 @@ class KotakSecuritiesApi(AsyncObj):
                 url = f"{self.host}/{self.positions_api}/positions/stocks"
 
             case _:
-                raise KotakSecuritiesApiError(
-                    999100, "position_type must be in ['TODAYS', 'OPEN', 'STOCKS']"
-                )
+                raise KotakSecuritiesApiError(999100, "position_type must be in ['TODAYS', 'OPEN', 'STOCKS']")
 
         headers = {
             "accept": "application/json",
@@ -436,9 +434,7 @@ class KotakSecuritiesApi(AsyncObj):
 
         if status == 200:
             columns = [
-                "trading_symbol",
-                "instrument_name",
-                "instrument_token",
+                "kotak_sec_instrument_token",
                 "lot_size",
                 "buy_qty",
                 "sell_qty",
@@ -458,9 +454,7 @@ class KotakSecuritiesApi(AsyncObj):
                 df = pd.DataFrame(success)
                 df.rename(
                     columns={
-                        "symbol": "trading_symbol",
-                        "instrumentName": "instrument_name",
-                        "instrumentToken": "instrument_token",
+                        "instrumentToken": "kotak_sec_instrument_token",
                         "marketLot": "lot_size",
                         "buyTradedQtyLot": "buy_qty",
                         "sellTradedQtyLot": "sell_qty",
@@ -478,9 +472,7 @@ class KotakSecuritiesApi(AsyncObj):
 
     async def order_report(self, order_id=None, is_fno=False):
         if not hasattr(self, "session_token") and not self.session_token:
-            raise KotakSecuritiesApiError(
-                "No session token found. Please invoke 'login' function first"
-            )
+            raise KotakSecuritiesApiError("No session token found. Please invoke 'login' function first")
 
         if not order_id:
             url = f"{self.host}/{self.report_api}/orders"
@@ -607,20 +599,39 @@ class KotakSecuritiesApi(AsyncObj):
                 df["price"] = df["price"].apply(round, 2)
 
                 if "order_timestamp" in df.columns:
-                    print("Test")
-                    df["order_timestamp"] = df["order_timestamp"].apply(parse)
+                    df["order_timestamp"] = df["order_timestamp"].apply(
+                        dt.datetime.strptime, args=("%b %d %Y %H:%M:%S:%f%p",)
+                    )
 
                 if "activity_timestamp" in df.columns:
-                    df['activity_timestamp'] = df["activity_timestamp"].apply(parse)
+                    df["activity_timestamp"] = df["activity_timestamp"].apply(
+                        dt.datetime.strptime, args=("%b %d %Y %H:%M:%S:%f%p",)
+                    )
                 return df[columns].copy()
 
         print(resp)
 
+    async def single_order_report(self, order_id, is_fno, error_message=None):
+        if "REJECTED" in order_id:
+            return {"order_id": order_id, "status": "REJECTED", "message": error_message}
+        try:
+            data = await self.order_report(order_id, is_fno)
+            data["pending_qty"] = data.qty - data.filled_qty
+            row = data.iloc[-1]
+            if row["status"] in ["NEW_PENDING", "CHANGE_PENDING", "CONFIRMATION_PENDING"]:
+                await asyncio.sleep(0.25)
+                return await self.single_order_report(order_id, is_fno)
+            return row
+        except Exception as e:
+            import traceback
+
+            traceback.print_exc()
+            print(e)
+            return {}
+
     async def trade_report(self, order_id=None, is_fno=False):
         if not hasattr(self, "session_token") and not self.session_token:
-            raise KotakSecuritiesApiError(
-                "No session token found. Please invoke 'login' function first"
-            )
+            raise KotakSecuritiesApiError("No session token found. Please invoke 'login' function first")
 
         if not order_id:
             url = f"{self.host}/{self.report_api}/trades"

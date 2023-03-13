@@ -1,0 +1,649 @@
+{% extends 'base.html' %} {% block content %}
+<div class="container-fluid mt-2 mt-md-3" id="app">
+  <div class="row">
+    <div class="col-12 text-end">
+      <span>
+        <button
+          type="button"
+          :class="{'disabled': (strategy_data.length > 0 || page_loaded == false)}"
+          class="btn btn-success m-1"
+        >
+          Start Algo
+        </button>
+        <button
+          type="button"
+          :class="{'disabled': (strategy_data.length == 0 || page_loaded == false)}"
+          class="btn btn-danger m-1"
+          @click="exitAlgo()"
+        >
+          Exit Algo
+        </button>
+        <button type="button" class="btn btn-dark m-1" @click="squareOffAll()">
+          Square Off All
+        </button>
+      </span>
+    </div>
+    <div class="col-12" v-if="strategy_data.length > 0">
+      <div class="table-responsive">
+        <table class="table table-striped table-hover">
+          <thead>
+            <tr class="text-center">
+              <th rowspan="2">No.</th>
+              <th rowspan="2">Re Entry</th>
+              <th rowspan="2">Release Hold</th>
+              <th rowspan="2">Hold Exit</th>
+              <th rowspan="2">Balance</th>
+              <th colspan="6">Call</th>
+              <th colspan="6">Put</th>
+            </tr>
+
+            <tr class="text-center">
+              <th width="3%">In</th>
+              <th width="3%">Out</th>
+              <th width="3%">Exit</th>
+              <th width="7%">Delta</th>
+              <th width="7%">Ltp</th>
+              <th width="7%">Strike</th>
+              <th width="7%">Strike</th>
+              <th width="7%">Ltp</th>
+              <th width="7%">Delta</th>
+              <th width="3%">Exit</th>
+              <th width="3%">Out</th>
+              <th width="3%">In</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            <tr v-for="data in strategy_data">
+              <td class="text-center">[[ data.idx ]]</td>
+              <td class="text-center">
+                <button
+                  type="button"
+                  :class="{'disabled': data.exited_one_side == false}"
+                  class="btn btn-success"
+                  @click="reEntryOneSide(data.idx)"
+                >
+                  <i class="fa fa-repeat"></i>
+                </button>
+              </td>
+              <td class="text-center">
+                <button
+                  type="button"
+                  :class="{'disabled': data.one_side_exit_hold == 0}"
+                  class="btn btn-info"
+                  @click="releaseOneSideExitHold(data.idx)"
+                >
+                  <i class="fa fa-play"></i>
+                </button>
+              </td>
+              <td class="text-center">
+                <button
+                  type="button"
+                  :class="{'disabled': data.one_side_exit_hold == 1}"
+                  class="btn btn-warning"
+                  @click="oneSideExitHold(data.idx)"
+                >
+                  <i class="fa fa-pause"></i>
+                </button>
+              </td>
+              <td class="text-center">
+                <button
+                  type="button"
+                  :class="{'disabled': data.exited_one_side == true}"
+                  class="btn btn-secondary"
+                  @click="rebalaceStrike(data.idx)"
+                >
+                  <i class="fa fa-balance-scale"></i>
+                </button>
+              </td>
+              <td class="text-center">
+                <button
+                  type="button"
+                  :class="{'disabled': data.ce_strike == null}"
+                  id="call-shift-in-[[data.idx]]"
+                  class="btn btn-light"
+                  @click="shiftSingleStrike(data.idx, 'CE', 100)"
+                >
+                  <i class="fa fa-arrow-down text-success"></i>
+                </button>
+              </td>
+              <td class="text-center">
+                <button
+                  type="button"
+                  :class="{'disabled': data.ce_strike == null}"
+                  id="call-shift-out-[[data.idx]]"
+                  class="btn btn-light"
+                  @click="shiftSingleStrike(data.idx, 'CE', -100)"
+                >
+                  <i class="fa fa-arrow-up text-success"></i>
+                </button>
+              </td>
+              <td class="text-center">
+                <button
+                  type="button"
+                  :class="{'disabled': data.exited_one_side == true}"
+                  id="call-exit-[[data.idx]]"
+                  class="btn btn-success"
+                  @click="exitOneSide(data.idx, 'CE')"
+                >
+                  <i class="fa fa-trash-o fa-lg"></i>
+                </button>
+              </td>
+              <td class="text-center text-success">
+                [[formatNumber(data.ce_delta * 100)]]
+              </td>
+              <td class="text-center text-success">
+                [[formatNumber(data.ce_price)]]
+              </td>
+              <td class="text-center text-success">[[data.ce_strike]]</td>
+              <td class="text-center text-danger">[[data.pe_strike]]</td>
+              <td class="text-center text-danger">
+                [[formatNumber(data.pe_price)]]
+              </td>
+              <td class="text-center text-danger">
+                [[formatNumber(data.pe_delta * 100)]]
+              </td>
+              <td class="text-center">
+                <button
+                  type="button"
+                  :class="{'disabled': data.exited_one_side == true}"
+                  class="btn btn-danger"
+                  @click="exitOneSide(data.idx, 'PE')"
+                >
+                  <i class="fa fa-trash-o fa-lg"></i>
+                </button>
+              </td>
+              <td class="text-center">
+                <button
+                  type="button"
+                  :class="{'disabled': data.pe_strike == null}"
+                  class="btn btn-light"
+                  @click="shiftSingleStrike(data.idx, 'PE', -100)"
+                >
+                  <i class="fa fa-arrow-down text-danger"></i>
+                </button>
+              </td>
+              <td class="text-center">
+                <button
+                  type="button"
+                  :class="{'disabled': data.pe_strike == null}"
+                  class="btn btn-light"
+                  @click="shiftSingleStrike(data.idx, 'PE', 100)"
+                >
+                  <i class="fa fa-arrow-up text-danger"></i>
+                </button>
+              </td>
+            </tr>
+            <tr v-if="strategy_data.length > 0">
+              <td colspan="5" class="text-center">Total</td>
+              <td colspan="3"></td>
+              <td class="text-center text-success">[[formatNumber(total_data.ce_delta * 100)]]</td>
+              <td class="text-center text-success">[[formatNumber(total_data.ce_price)]]</td>
+              <td class="text-center" :class="[[ stylePnl(total_data.total_price) ]]">[[formatNumber(total_data.total_price)]]</td> 
+              <td class="text-center" :class="[[ stylePnl(total_data.total_delta) ]]">[[formatNumber(total_data.total_delta * 100)]]</td>
+              </td>
+              <td class="text-center text-danger">[[formatNumber(total_data.pe_price)]]</td>
+              <td class="text-center text-danger">[[formatNumber(total_data.pe_delta * 100)]]</td>
+              <td colspan="3"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="col-12">
+      <button
+        type="button"
+        class="btn btn-primary float-end"
+        @click="updatePosition"
+      >
+        Update Position
+      </button>
+    </div>
+    <div class="col-12">
+      <div class="table-responsive">
+        <table class="table table-striped table-hover">
+          <thead>
+            <tr>
+              <th width="3%" scope="col">#</th>
+              <th width="10%" scope="col">USERNAME</th>
+              <th width="10%" scope="col">BROKER</th>
+              <th width="5%" scope="col">QTY</th>
+              <th width="7%" scope="col">PNL</th>
+              <th width="7%" scope="col">JPNL</th>
+              <th width="5%" scope="col">SPTS</th>
+              <th width="5%" scope="col">JPTS</th>
+              <th width="5%" scope="col">TPTS</th>
+              <th scope="col">CE SELL</th>
+              <th scope="col">PE SELL</th>
+              <th scope="col">CE BUY</th>
+              <th scope="col">PE BUY</th>
+              <th>ACTION</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="data in pnl_data">
+              <td scope="row">[[data.index]]</td>
+              <td>[[data.username]]</td>
+              <td>[[data.broker_name]]</td>
+              <td>[[data.quantity]]</td>
+              <td :class="[[ stylePnl(data.pnl) ]]">
+                [[formatNumber(data.pnl)]]
+              </td>
+              <td :class="[[ stylePnl(data.pnl) ]]">
+                [[formatNumber(data.jegan_pnl)]]
+              </td>
+              <td :class="[[ stylePnl(data.pnl) ]]">
+                [[formatNumber(data.pnl_points)]]
+              </td>
+              <td :class="[[ stylePnl(data.pnl) ]]">
+                [[formatNumber(data.jegan_pts)]]
+              </td>
+              <td :class="[[ stylePnl(data.pnl) ]]">
+                [[formatNumber(data.jegan_pts + data.pnl_points)]]
+              </td>
+              <td>[[data.ce_sell_qty]]</td>
+              <td>[[data.pe_sell_qty]]</td>
+              <td>[[data.ce_buy_qty]]</td>
+              <td>[[data.pe_buy_qty]]</td>
+              <td>
+                
+                <button
+                  type="button"
+                  :class="{'disabled': data.broker_name == 'dummy'}"
+                  class="btn btn-success"
+                  @click="entryUserAlgo(data.username)"
+                >
+                  <i class="fa fa-check"></i>
+                </button>&nbsp;
+                <button type="button"
+                  class="btn btn-danger"
+                  :class="{'disabled': data.broker_name == 'dummy'}"
+                  @click="exitUserAlgo(data.username)"
+                >
+                  <i class="fa fa-times"></i>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock content %} {% block custom_script %}
+<script>
+  const { createApp } = Vue;
+
+  createApp({
+    delimiters: ["[[", "]]"],
+    data() {
+      return {
+        pnl_data: [],
+        strategy_data: [],
+        page_loaded: false,
+        total_data: {},
+      };
+    },
+    mounted: function () {
+      let ws_scheme = window.location.protocol == "https:" ? "wss://" : "ws://";
+      let pnl_ws = new WebSocket(
+        ws_scheme + window.location.host + "/ws/live_pnl/"
+      );
+
+      let strategy_ws = new WebSocket(
+        ws_scheme +
+          window.location.host +
+          "/ws/deployed_option_strategy_symbol/{{ object.pk }}"
+      );
+
+      pnl_ws.onmessage = (event) => {
+        this.pnl_data = JSON.parse(event.data);
+      };
+
+      strategy_ws.onmessage = (event) => {
+        var strategy_data = JSON.parse(event.data);
+        this.page_loaded = true;
+
+        var total_delta = {};
+        var ce_delta = 0;
+        var pe_delta = 0;
+        var ce_price = 0;
+        var pe_price = 0;
+
+        for (const x in strategy_data) {
+          ce_delta = strategy_data[x].ce_delta + ce_delta;
+          pe_delta = strategy_data[x].pe_delta + pe_delta;
+          ce_price = strategy_data[x].ce_price + ce_price;
+          pe_price = strategy_data[x].pe_price + pe_price;
+        }
+
+        this.total_data = {
+          "ce_delta": ce_delta / (strategy_data.length),
+          "pe_delta": pe_delta / (strategy_data.length),
+          "total_delta": (ce_delta + pe_delta) / strategy_data.length,
+          "ce_price": ce_price / strategy_data.length,
+          "pe_price": pe_price / strategy_data.length,
+          "total_price": (ce_price - pe_price) / strategy_data.length,
+        }
+        
+        this.strategy_data = strategy_data;
+      };
+    },
+    methods: {
+      formatNumber(num) {
+        return parseFloat(num).toFixed(2);
+      },
+      stylePnl(num) {
+        if (num < 0) {
+          return "text-danger";
+        } else {
+          return "text-success";
+        }
+      },
+      updatePosition() {
+        let url =
+          window.location.protocol +
+          "//" +
+          window.location.host +
+          "/trade/update_position";
+        var requestOptions = {
+          method: "GET",
+          redirect: "follow",
+        };
+        fetch(url, requestOptions)
+          .then((response) => response.text())
+          .then((result) => console.log(result))
+          .catch((error) => console.log("error", error));
+      },
+      reEntryOneSide(index, option_type) {
+        let url =
+          window.location.protocol +
+          "//" +
+          window.location.host +
+          "{% url 'trades:reentry_one_side' %}";
+        var myHeaders = new Headers();
+        myHeaders.append("Content-Type", "application/json");
+        myHeaders.append("X-CSRFToken", "{{csrf_token}}");
+
+        var raw = JSON.stringify({
+          strategy: "{{ object.pk }}",
+          index: index,
+          option_type: option_type,
+        });
+
+        var requestOptions = {
+          method: "POST",
+          headers: myHeaders,
+          body: raw,
+          redirect: "follow",
+        };
+
+        fetch(url, requestOptions)
+          .then((response) => response.text())
+          .then((result) => console.log(result))
+          .catch((error) => console.log("error", error));
+      },
+      exitOneSide(index, option_type) {
+        let url =
+          window.location.protocol +
+          "//" +
+          window.location.host +
+          "{% url 'trades:exit_one_side' %}";
+        var myHeaders = new Headers();
+        myHeaders.append("Content-Type", "application/json");
+        myHeaders.append("X-CSRFToken", "{{csrf_token}}");
+
+        var raw = JSON.stringify({
+          strategy: "{{ object.pk }}",
+          index: index,
+          option_type: option_type,
+        });
+
+        var requestOptions = {
+          method: "POST",
+          headers: myHeaders,
+          body: raw,
+          redirect: "follow",
+        };
+
+        fetch(url, requestOptions)
+          .then((response) => response.text())
+          .then((result) => console.log(result))
+          .catch((error) => console.log("error", error));
+      },
+      rebalaceStrike(index) {
+        let url =
+          window.location.protocol +
+          "//" +
+          window.location.host +
+          "{% url 'trades:rebalance_position' %}";
+        var myHeaders = new Headers();
+        myHeaders.append("Content-Type", "application/json");
+        myHeaders.append("X-CSRFToken", "{{csrf_token}}");
+
+        var raw = JSON.stringify({
+          strategy: "{{ object.pk }}",
+          index: index,
+        });
+
+        var requestOptions = {
+          method: "POST",
+          headers: myHeaders,
+          body: raw,
+          redirect: "follow",
+        };
+
+        fetch(url, requestOptions)
+          .then((response) => response.text())
+          .then((result) => console.log(result))
+          .catch((error) => console.log("error", error));
+      },
+      shiftSingleStrike(index, option_type, points) {
+        let url =
+          window.location.protocol +
+          "//" +
+          window.location.host +
+          "{% url 'trades:shift_single_strike' %}";
+        var myHeaders = new Headers();
+        myHeaders.append("Content-Type", "application/json");
+        myHeaders.append("X-CSRFToken", "{{csrf_token}}");
+
+        var raw = JSON.stringify({
+          strategy: "{{ object.pk }}",
+          index: index,
+          option_type: option_type,
+          points: points,
+        });
+
+        var requestOptions = {
+          method: "POST",
+          headers: myHeaders,
+          body: raw,
+          redirect: "follow",
+        };
+
+        fetch(url, requestOptions)
+          .then((response) => response.text())
+          .then((result) => console.log(result))
+          .catch((error) => console.log("error", error));
+      },
+      oneSideExitHold(index) {
+        let url =
+          window.location.protocol +
+          "//" +
+          window.location.host +
+          "{% url 'trades:one_side_exit_hold' %}";
+        var myHeaders = new Headers();
+        myHeaders.append("Content-Type", "application/json");
+        myHeaders.append("X-CSRFToken", "{{csrf_token}}");
+
+        var raw = JSON.stringify({
+          strategy: "{{ object.pk }}",
+          index: index,
+        });
+
+        var requestOptions = {
+          method: "POST",
+          headers: myHeaders,
+          body: raw,
+          redirect: "follow",
+        };
+
+        fetch(url, requestOptions)
+          .then((response) => response.text())
+          .then((result) => console.log(result))
+          .catch((error) => console.log("error", error));
+      },
+      releaseOneSideExitHold(index) {
+        let url =
+          window.location.protocol +
+          "//" +
+          window.location.host +
+          "{% url 'trades:release_one_side_exit_hold' %}";
+        var myHeaders = new Headers();
+        myHeaders.append("Content-Type", "application/json");
+        myHeaders.append("X-CSRFToken", "{{csrf_token}}");
+
+        var raw = JSON.stringify({
+          strategy: "{{ object.pk }}",
+          index: index,
+        });
+
+        var requestOptions = {
+          method: "POST",
+          headers: myHeaders,
+          body: raw,
+          redirect: "follow",
+        };
+
+        fetch(url, requestOptions)
+          .then((response) => response.text())
+          .then((result) => console.log(result))
+          .catch((error) => console.log("error", error));
+      },
+      exitAlgo() {
+        let url =
+          window.location.protocol +
+          "//" +
+          window.location.host +
+          "{% url 'trades:exit_algo' %}";
+        var myHeaders = new Headers();
+        myHeaders.append("Content-Type", "application/json");
+        myHeaders.append("X-CSRFToken", "{{csrf_token}}");
+
+        var raw = JSON.stringify({
+          strategy: "{{ object.pk }}",
+        });
+
+        var requestOptions = {
+          method: "POST",
+          headers: myHeaders,
+          body: raw,
+          redirect: "follow",
+        };
+
+        fetch(url, requestOptions)
+          .then((response) => response.text())
+          .then((result) => console.log(result))
+          .catch((error) => console.log("error", error));
+      },
+      squareOffAll() {
+        let url =
+          window.location.protocol +
+          "//" +
+          window.location.host +
+          "{% url 'trades:square_off_all' %}";
+        var myHeaders = new Headers();
+        myHeaders.append("Content-Type", "application/json");
+        myHeaders.append("X-CSRFToken", "{{csrf_token}}");
+
+        var requestOptions = {
+          method: "GET",
+          headers: myHeaders,
+          redirect: "follow",
+        };
+
+        fetch(url, requestOptions)
+          .then((response) => response.text())
+          .then((result) => console.log(result))
+          .catch((error) => console.log("error", error));
+      },
+      squareOffAll() {
+        let url =
+          window.location.protocol +
+          "//" +
+          window.location.host +
+          "{% url 'trades:square_off_market' %}";
+        var myHeaders = new Headers();
+        myHeaders.append("Content-Type", "application/json");
+        myHeaders.append("X-CSRFToken", "{{csrf_token}}");
+
+        var requestOptions = {
+          method: "GET",
+          headers: myHeaders,
+          redirect: "follow",
+        };
+
+        fetch(url, requestOptions)
+          .then((response) => response.text())
+          .then((result) => console.log(result))
+          .catch((error) => console.log("error", error));
+      },
+      exitUserAlgo(username) {
+        let url =
+          window.location.protocol +
+          "//" +
+          window.location.host +
+          "{% url 'trades:exit_user_algo' %}";
+        var myHeaders = new Headers();
+        myHeaders.append("Content-Type", "application/json");
+        myHeaders.append("X-CSRFToken", "{{csrf_token}}");
+
+        var raw = JSON.stringify({
+          strategy: "{{ object.pk }}",
+          username: username,
+        });
+
+        var requestOptions = {
+          method: "POST",
+          headers: myHeaders,
+          body: raw,
+          redirect: "follow",
+        };
+
+        fetch(url, requestOptions)
+          .then((response) => response.text())
+          .then((result) => console.log(result))
+          .catch((error) => console.log("error", error));
+      },
+      entryUserAlgo(username) {
+        let url =
+          window.location.protocol +
+          "//" +
+          window.location.host +
+          "{% url 'trades:entry_user_algo' %}";
+        var myHeaders = new Headers();
+        myHeaders.append("Content-Type", "application/json");
+        myHeaders.append("X-CSRFToken", "{{csrf_token}}");
+
+        var raw = JSON.stringify({
+          strategy: "{{ object.pk }}",
+          username: username,
+        });
+
+        var requestOptions = {
+          method: "POST",
+          headers: myHeaders,
+          body: raw,
+          redirect: "follow",
+        };
+
+        fetch(url, requestOptions)
+          .then((response) => response.text())
+          .then((result) => console.log(result))
+          .catch((error) => console.log("error", error));
+      },
+    },
+  }).mount("#app");
+</script>
+{% endblock custom_script %}
