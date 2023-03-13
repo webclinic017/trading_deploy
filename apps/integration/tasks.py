@@ -31,7 +31,7 @@ def login_kotak(self):
 
 @app.task(name="Save Kotak Neo", bind=True)
 def login_kotak_neo(self):
-    for neo in KotakNeoApi.objects.filter(broker_api__active=True):
+    for neo in KotakNeoApi.objects.filter(broker_api__is_active=True):
         try:
             neo.save()
         except Exception as e:
@@ -44,7 +44,7 @@ def login_kotak_neo(self):
 
 @app.task(name="Update Kotak Neo", bind=True)
 def update_neo_token(self):
-    for neo in KotakNeoApi.objects.filter(broker_api__active=True):
+    for neo in KotakNeoApi.objects.filter(broker_api__is_active=True):
         try:
             neo.update_auth_token = True
             neo.save()

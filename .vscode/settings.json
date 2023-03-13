@@ -26,9 +26,9 @@
     },
     "files.exclude": {
         "config": false,
-        "logs": true,
+        // "logs": true,
         "pid": true,
-        "services": false,
+        // "services": false,
         "socks": true,
         "static": true
     },
