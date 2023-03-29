@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     "apps.integration",
     "apps.trade",
     "apps.data",
+    "import_export",
 ]
 
 MIDDLEWARE = [

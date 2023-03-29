@@ -1,4 +1,5 @@
 from django.contrib import admin
+from import_export.admin import ImportExportModelAdmin
 
 # Register your models here.
 from apps.data.models import DailyData, Instrument
@@ -14,7 +15,7 @@ class Instrument(admin.ModelAdmin):
     )
 
 @admin.register(DailyData)
-class DailyData(admin.ModelAdmin):
+class DailyData(ImportExportModelAdmin, admin.ModelAdmin):
     list_display = (
         "instrument",
         "date",
