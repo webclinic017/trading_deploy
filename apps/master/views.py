@@ -52,7 +52,7 @@ def logout_page(request):
 
 
 @method_decorator(login_required(), name="dispatch")
-class UserList(ListView):
+class UserList(NavView, ListView):
     model = User
     paginate_by: int = 25
     template_name = "user_list.html"
@@ -62,7 +62,7 @@ class UserList(ListView):
 
 
 @method_decorator(login_required(), name="dispatch")
-class MyAccount(ListView):
+class MyAccount(NavView, ListView):
     model = User
     paginate_by: int = 25
     template_name = "my_account.html"
