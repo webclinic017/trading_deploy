@@ -21,6 +21,9 @@
         <button type="button" class="btn btn-dark m-1" @click="squareOffAll()">
           Square Off All
         </button>
+        <button type="button" class="btn btn-dark m-1" @click="squareOffAllMarket()">
+          Square Off All Market
+        </button>
       </span>
     </div>
     <div class="col-12" v-if="strategy_data.length > 0">
@@ -190,62 +193,74 @@
         </table>
       </div>
     </div>
-    <div class="col-12">
-      <button
-        type="button"
-        class="btn btn-primary float-end"
-        @click="updatePosition"
-      >
-        Update Position
-      </button>
+    <div class="col-12 col-md-6">
+      <h3 class="text-danger text-md-center">STOP LOSS: -{{ stop_loss }}, DIFFERENCE: [[ difference ]]</h3>
     </div>
-    <div class="col-12">
+    <div class="col-12 col-md-6 float-end">
+      <span class="float-end">
+        <button
+          type="button"
+          class="btn btn-dark m-1"
+          @click="adjustAllPosition"
+        >
+          Adjust All Position
+        </button>
+        <button
+          type="button"
+          class="btn btn-primary m-1"
+          @click="updatePosition"
+        >
+          Update Position
+        </button>
+      </span>
+    </div>
+    <div class="col-12" v-if="pnl_data != []">
       <div class="table-responsive">
         <table class="table table-striped table-hover">
           <thead>
             <tr>
-              <th width="3%" scope="col">#</th>
-              <th width="10%" scope="col">USERNAME</th>
-              <th width="10%" scope="col">BROKER</th>
-              <th width="5%" scope="col">QTY</th>
-              <th width="7%" scope="col">PNL</th>
-              <th width="7%" scope="col">JPNL</th>
-              <th width="5%" scope="col">SPTS</th>
-              <th width="5%" scope="col">JPTS</th>
-              <th width="5%" scope="col">TPTS</th>
-              <th scope="col">CE SELL</th>
-              <th scope="col">PE SELL</th>
-              <th scope="col">CE BUY</th>
-              <th scope="col">PE BUY</th>
+              <th margin="auto" scope="col">#</th>
+              <th scope="col">USERNAME</th>
+              <th scope="col">MARGIN</th>
+              <th scope="col">QTY</th>
+              <th scope="col">PNL</th>
+              <!-- <th width="7%" scope="col">JPNL</th> -->
+              <th scope="col">SPTS</th>
+              <!-- <th width="5%" scope="col">JPTS</th> -->
+              <!-- <th width="5%" scope="col">TPTS</th> -->
+              <th scope="col">CES</th>
+              <th scope="col">PES</th>
+              <th scope="col">CEB</th>
+              <th scope="col">PEB</th>
               <th>ACTION</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="data in pnl_data">
+            <tr v-for="data in pnl_data" :class="{'bg-info': data.mismatch == 1}">
               <td scope="row">[[data.index]]</td>
-              <td>[[data.username]]</td>
-              <td>[[data.broker_name]]</td>
+              <td :class="{'bg-warning': data.in_cache == false}">[[data.username]]</td>
+              <td class="text-end">[[formatCurrency(data.margin)]]</td>
               <td>[[data.quantity]]</td>
               <td :class="[[ stylePnl(data.pnl) ]]">
                 [[formatNumber(data.pnl)]]
               </td>
-              <td :class="[[ stylePnl(data.pnl) ]]">
+              <!-- <td :class="[[ stylePnl(data.pnl) ]]">
                 [[formatNumber(data.jegan_pnl)]]
-              </td>
+              </td> -->
               <td :class="[[ stylePnl(data.pnl) ]]">
                 [[formatNumber(data.pnl_points)]]
               </td>
-              <td :class="[[ stylePnl(data.pnl) ]]">
+              <!-- <td :class="[[ stylePnl(data.pnl) ]]">
                 [[formatNumber(data.jegan_pts)]]
               </td>
               <td :class="[[ stylePnl(data.pnl) ]]">
                 [[formatNumber(data.jegan_pts + data.pnl_points)]]
-              </td>
+              </td> -->
               <td>[[data.ce_sell_qty]]</td>
               <td>[[data.pe_sell_qty]]</td>
               <td>[[data.ce_buy_qty]]</td>
               <td>[[data.pe_buy_qty]]</td>
-              <td>
+              <td class="text-end">
                 
                 <button
                   type="button"
@@ -261,8 +276,35 @@
                   @click="exitUserAlgo(data.username)"
                 >
                   <i class="fa fa-times"></i>
+                </button>&nbsp;
+                <button type="button"
+                  class="btn btn-warning"
+                  :class="{'disabled': data.broker_name == 'dummy'}"
+                  @click="squareoffUserAlgo(data.username, data.broker_name)"
+                >
+                  <i class="fa fa-times-circle-o"></i>
+                </button>&nbsp;
+                <button type="button"
+                  class="btn btn-dark"
+                  :class="{'disabled': data.broker_name == 'dummy'}"
+                  @click="adjustUserPosition(data.username, data.broker_name)"
+                >
+                  <i class="fa fa-balance-scale"></i>
                 </button>
               </td>
+            </tr>
+            <tr>
+              <td colspan="3" class="text-center">TOTAL</td>
+              <td>[[ total_qty ]]</td>
+              <td :class="[[ stylePnl(total_pnl) ]]">
+                [[formatNumber(total_pnl)]]
+              </td>
+              <td></td>
+              <td>[[ total_ce_sell_qty]]</td>
+              <td>[[ total_pe_sell_qty]]</td>
+              <td>[[ total_ce_buy_qty]]</td>
+              <td>[[ total_pe_buy_qty]]</td>
+              <td></td>
             </tr>
           </tbody>
         </table>
@@ -282,12 +324,19 @@
         strategy_data: [],
         page_loaded: false,
         total_data: {},
+        total_pnl: 0,
+        total_qty: 0,
+        total_ce_sell_qty: 0,
+        total_pe_sell_qty: 0,
+        total_ce_buy_qty: 0,
+        total_pe_buy_qty: 0,
+        difference: 0,
       };
     },
     mounted: function () {
       let ws_scheme = window.location.protocol == "https:" ? "wss://" : "ws://";
       let pnl_ws = new WebSocket(
-        ws_scheme + window.location.host + "/ws/live_pnl/"
+        ws_scheme + window.location.host + "/ws/live_pnl/{{ object.pk }}"
       );
 
       let strategy_ws = new WebSocket(
@@ -296,8 +345,42 @@
           "/ws/deployed_option_strategy_symbol/{{ object.pk }}"
       );
 
+      let difference_ws = new WebSocket(
+        ws_scheme + window.location.host + "/ws/stop_loss_difference/{{ object.pk }}"
+      );
+
+      difference_ws.onmessage = (event) => {
+        this.difference = JSON.parse(event.data)['stop_loss_difference']
+      }
+
       pnl_ws.onmessage = (event) => {
         this.pnl_data = JSON.parse(event.data);
+
+        var total_pnl = 0
+        var total_qty = 0
+        var total_ce_sell_qty = 0
+        var total_pe_sell_qty = 0
+        var total_ce_buy_qty = 0
+        var total_pe_buy_qty = 0
+        
+        for (const x in this.pnl_data) {
+          if (this.pnl_data[x].broker_name != 'dummy'){   
+            total_pnl = this.pnl_data[x].pnl + total_pnl
+            total_qty = this.pnl_data[x].quantity + total_qty
+            total_ce_sell_qty = this.pnl_data[x].ce_sell_qty + total_ce_sell_qty
+            total_pe_sell_qty = this.pnl_data[x].pe_sell_qty + total_pe_sell_qty
+            total_ce_buy_qty = this.pnl_data[x].ce_buy_qty + total_ce_buy_qty
+            total_pe_buy_qty = this.pnl_data[x].pe_buy_qty + total_pe_buy_qty
+          }
+        }
+        
+        this.total_pnl = total_pnl
+        this.total_qty = total_qty
+        this.total_ce_sell_qty = total_ce_sell_qty
+        this.total_pe_sell_qty = total_pe_sell_qty
+        this.total_ce_buy_qty = total_ce_buy_qty
+        this.total_pe_buy_qty = total_pe_buy_qty
+
       };
 
       strategy_ws.onmessage = (event) => {
@@ -309,6 +392,7 @@
         var pe_delta = 0;
         var ce_price = 0;
         var pe_price = 0;
+
 
         for (const x in strategy_data) {
           ce_delta = strategy_data[x].ce_delta + ce_delta;
@@ -332,6 +416,14 @@
     methods: {
       formatNumber(num) {
         return parseFloat(num).toFixed(2);
+      },
+      formatCurrency(num){
+        return parseFloat((Math.round(num))).toLocaleString('en-US', { 
+          style: 'currency', 
+          currency: 'INR',
+          maximumFractionDigits: 0, 
+          minimumFractionDigits: 0, 
+        });
       },
       stylePnl(num) {
         if (num < 0) {
@@ -568,7 +660,7 @@
           .then((result) => console.log(result))
           .catch((error) => console.log("error", error));
       },
-      squareOffAll() {
+      squareOffAllMarket() {
         let url =
           window.location.protocol +
           "//" +
@@ -616,6 +708,33 @@
           .then((result) => console.log(result))
           .catch((error) => console.log("error", error));
       },
+      squareoffUserAlgo(username, broker){
+        let url =
+          window.location.protocol +
+          "//" +
+          window.location.host +
+          "{% url 'trades:square_off_user' %}";
+        var myHeaders = new Headers();
+        myHeaders.append("Content-Type", "application/json");
+        myHeaders.append("X-CSRFToken", "{{csrf_token}}");
+
+        var raw = JSON.stringify({
+          username: username,
+          broker: broker
+        });
+
+        var requestOptions = {
+          method: "POST",
+          headers: myHeaders,
+          body: raw,
+          redirect: "follow",
+        };
+
+        fetch(url, requestOptions)
+          .then((response) => response.text())
+          .then((result) => console.log(result))
+          .catch((error) => console.log("error", error));
+      },
       entryUserAlgo(username) {
         let url =
           window.location.protocol +
@@ -629,6 +748,54 @@
         var raw = JSON.stringify({
           strategy: "{{ object.pk }}",
           username: username,
+        });
+
+        var requestOptions = {
+          method: "POST",
+          headers: myHeaders,
+          body: raw,
+          redirect: "follow",
+        };
+
+        fetch(url, requestOptions)
+          .then((response) => response.text())
+          .then((result) => console.log(result))
+          .catch((error) => console.log("error", error));
+      },
+      adjustAllPosition(username) {
+        let url =
+          window.location.protocol +
+          "//" +
+          window.location.host +
+          "{% url 'trades:adjust_all_position' %}";
+        var myHeaders = new Headers();
+        myHeaders.append("Content-Type", "application/json");
+        myHeaders.append("X-CSRFToken", "{{csrf_token}}");
+
+        var requestOptions = {
+          method: "GET",
+          headers: myHeaders,
+          redirect: "follow",
+        };
+
+        fetch(url, requestOptions)
+          .then((response) => response.text())
+          .then((result) => console.log(result))
+          .catch((error) => console.log("error", error));
+      },
+      adjustUserPosition(username, broker){
+        let url =
+          window.location.protocol +
+          "//" +
+          window.location.host +
+          "{% url 'trades:adjust_user_position' %}";
+        var myHeaders = new Headers();
+        myHeaders.append("Content-Type", "application/json");
+        myHeaders.append("X-CSRFToken", "{{csrf_token}}");
+
+        var raw = JSON.stringify({
+          username: username,
+          broker: broker
         });
 
         var requestOptions = {

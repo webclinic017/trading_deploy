@@ -26,8 +26,11 @@ def login_zerodha(self):
 @app.task(name="Save Kotak Securities", bind=True)
 def login_kotak(self):
     for kotak in KotakSecuritiesApi.objects.filter(broker_api__is_active=True):
-        kotak.save()
-
+        try:
+            kotak.save()
+        except Exception as e:
+            ct = timezone.localtime().replace(microsecond=0)
+            send_message(f"{ct} - {kotak.broker_api.user.username} Login Kotak Securities Error {e}")
 
 @app.task(name="Save Kotak Neo", bind=True)
 def login_kotak_neo(self):

@@ -6,6 +6,7 @@ from django_pandas.io import read_frame
 
 from apps.trade.models import DummyOrder
 from utils.async_obj import AsyncObj
+import numpy as np
 
 
 class DummyApi(AsyncObj):
@@ -14,6 +15,9 @@ class DummyApi(AsyncObj):
 
     async def generate_token(self, n=7):
         return "".join(random.choices(string.ascii_uppercase + string.digits, k=n))
+
+    def apply_slippage(self, rate, slippage=4):
+        return round(rate * abs((rate ** (1 / ((max(rate, 0.05)) * slippage))) - 1), 2)
 
     async def place_order(
         self,
@@ -69,7 +73,9 @@ class DummyApi(AsyncObj):
         )
         df = read_frame(qs)
         df["price"] = df["price"].astype(float)
-        df["total_value"] = df["quantity"] * df["price"]
+        df['slippage'] = df['price'].apply(self.apply_slippage)
+        df["price"] = np.where(df["transaction_type"] == "BUY", df['price'] + df['slippage'], df['price'] - df['slippage'])
+        df['total_value'] = df["price"] * df['quantity']
         df = (
             df.groupby(["tradingsymbol", "transaction_type"])
             .agg(
@@ -93,7 +99,6 @@ class DummyApi(AsyncObj):
             }
         )
         buy_df.drop(columns=["transaction_type"], inplace=True)
-
         sell_df = sell_df.rename(
             columns={
                 "quantity": "sell_qty",
@@ -106,3 +111,6 @@ class DummyApi(AsyncObj):
         df = buy_df.merge(sell_df, on="tradingsymbol", how="outer").fillna(0)
 
         return df
+
+    async def margin(self):
+        return 0

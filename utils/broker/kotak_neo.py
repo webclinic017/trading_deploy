@@ -13,14 +13,13 @@ from django.utils.timezone import localdate
 
 from utils.async_obj import AsyncObj
 from utils.http_request import http_request
+import traceback
 
 
 class KotakNeoApiError(Exception):
-    def __init__(self, code, http_code, message, description):
+    def __init__(self, code, message):
         self.code = code
-        self.http_code = http_code
         self.message = message
-        self.description = description
         super().__init__(self.message)
 
 
@@ -215,6 +214,23 @@ class KotakNeoApi(AsyncObj):
             )
         )
 
+        print({
+                    "am": after_market,
+                    "dq": disclosed_quantity,
+                    "es": exchange_segment,
+                    "mp": market_protection,
+                    "pc": product_code,
+                    "pf": pos_sqrf_flag,
+                    "pr": price,
+                    "pt": order_type,
+                    "qt": quantity,
+                    "rt": order_duration,
+                    "tp": trigger_price,
+                    "ts": tradingsymbol,
+                    "tt": transaction_type,
+                    "ig": tag,
+                })
+
         payload = f"jData={jdata}"
 
         headers = {
@@ -226,12 +242,14 @@ class KotakNeoApi(AsyncObj):
             "Authorization": f"Bearer {self.access_token}",
         }
 
+
         status, resp, cookie = await http_request("POST", url, headers, payload)
+        print(status, resp)
 
         if status == 429 or resp.get("code") == "900807":
-            raise KotakNeoApiError(resp["code"], status, resp["message"], resp["description"])
+            raise KotakNeoApiError(40000, "Max Order Frequency Limit reached.")
         elif status == 200 and resp.get("stat") == "Not_Ok":
-            raise KotakNeoApiError(resp.get("stCode"), status, resp.get("errMsg"), resp.get("description", ""))
+            raise KotakNeoApiError(resp.get("stCode"), resp.get("errMsg"))
 
         return {
             "order_id": resp["nOrdNo"],
@@ -294,10 +312,9 @@ class KotakNeoApi(AsyncObj):
         http_status, resp, _ = await http_request("POST", url, headers, payload)
 
         if http_status == 429 or resp.get("code") == "900807":
-            raise KotakNeoApiError(resp["code"], http_status, resp["message"], resp["description"])
+            raise KotakNeoApiError(40000, "Max Order Frequency Limit reached.")
         elif http_status == 200 and resp.get("stat") == "Not_Ok":
-            print(resp)
-            raise KotakNeoApiError(resp["code"], http_status, resp["errMsg"], resp.get("description", ""))
+            raise KotakNeoApiError(resp["code"], resp["errMsg"])
 
         return {"message": f"Your Order has been Modified Successfully for Order No: {order_id}"}
 
@@ -333,7 +350,7 @@ class KotakNeoApi(AsyncObj):
         http_status, resp, _ = await http_request("POST", url, headers, payload)
 
         if http_status == 429 or resp.get("code") == "900807":
-            raise KotakNeoApiError(resp["code"], http_status, resp["message"], resp["description"])
+            raise KotakNeoApiError(40000, "Max Order Frequency Limit reached.")
 
         return {"message": f"Your Order has been Cancelled Successfully for Order No: {order_id}"}
 
@@ -351,7 +368,7 @@ class KotakNeoApi(AsyncObj):
         http_status, resp, _ = await http_request("GET", url, headers)
 
         if http_status == 429 or resp.get("code") == "900807":
-            raise KotakNeoApiError(resp["code"], http_status, resp["message"], resp["description"])
+            raise KotakNeoApiError(40000, "Max Order Frequency Limit reached.")
 
         return resp["data"]
 
@@ -372,9 +389,11 @@ class KotakNeoApi(AsyncObj):
         payload = f"jData={jdata}"
 
         http_status, resp, _ = await http_request("POST", url, headers, payload)
+        
+        print(resp)
 
         if http_status == 429 or resp.get("code") == "900807":
-            raise KotakNeoApiError(resp["code"], http_status, resp["message"], resp["description"])
+            raise KotakNeoApiError(40000, "Max Order Frequency Limit reached.")
 
         return resp["data"]
 
@@ -407,11 +426,12 @@ class KotakNeoApi(AsyncObj):
 
             df = df[columns].copy()
             return df.iloc[0]
-        except Exception as e:
-            import traceback
+        except KotakNeoApiError as ke:
+            if ke.code == 40000:
+                await asyncio.sleep(1)
+                return await self.single_order_report(order_id, is_fno, error_message)
 
             traceback.print_exc()
-            print(e)
             return {}
 
     async def trade_book(self):
@@ -428,7 +448,7 @@ class KotakNeoApi(AsyncObj):
         http_status, resp, _ = await http_request("GET", url, headers)
 
         if http_status == 429 or resp.get("code") == "900807":
-            raise KotakNeoApiError(resp["code"], http_status, resp["message"], resp["description"])
+            raise KotakNeoApiError(40000, "Max Order Frequency Limit reached.")
 
         return resp["data"]
 
@@ -446,7 +466,7 @@ class KotakNeoApi(AsyncObj):
         http_status, resp, _ = await http_request("GET", url, headers)
 
         if http_status == 429 or resp.get("code") == "900807":
-            raise KotakNeoApiError(resp["code"], http_status, resp["message"], resp["description"])
+            raise KotakNeoApiError(40000, "Max Order Frequency Limit reached.")
 
         columns = [
             "tradingsymbol",
@@ -455,6 +475,9 @@ class KotakNeoApi(AsyncObj):
             "buy_value",
             "sell_value",
         ]
+
+        if resp.get("errMsg") == "No Data":
+            return pd.DataFrame(columns=columns)
 
         df = pd.DataFrame(resp["data"])
         df["flBuyQty"] = df["flBuyQty"].astype(int) + df["cfBuyQty"].astype(int)
@@ -475,7 +498,7 @@ class KotakNeoApi(AsyncObj):
 
         return df[columns].copy()
 
-    async def limits(
+    async def margin(
         self,
         segment: str = "ALL",
         exchange: str = "ALL",
@@ -507,12 +530,11 @@ class KotakNeoApi(AsyncObj):
         http_status, resp, _ = await http_request("POST", url, headers, payload)
 
         if http_status == 429 or resp.get("code") == "900807":
-            raise KotakNeoApiError(resp["code"], http_status, resp["message"], resp["description"])
+            raise KotakNeoApiError(40000, "Max Order Frequency Limit reached.")
         elif http_status == 200 and resp.get("stat") == "Not_Ok":
-            print(resp)
-            raise KotakNeoApiError(resp["code"], http_status, resp["errMsg"], resp.get("description", ""))
+            raise KotakNeoApiError(resp["code"], resp["errMsg"])
 
-        return resp
+        return float(resp["Net"]) + float(resp["PremiumPrsnt"])
 
     async def download_files(self):
         url = f"{self.master_script_url}/masterscrip/file-paths"
@@ -525,7 +547,7 @@ class KotakNeoApi(AsyncObj):
         http_status, resp, _ = await http_request("GET", url, headers)
 
         if http_status == 429 or resp.get("code") == "900807":
-            raise KotakNeoApiError(resp["code"], http_status, resp["message"], resp["description"])
+            raise KotakNeoApiError(40000, "Max Order Frequency Limit reached.")
 
         for file_path in resp["data"]["filesPaths"]:
             f = file_path.split("/")
@@ -539,7 +561,7 @@ class KotakNeoApi(AsyncObj):
 
     async def instruments(self, instrument_type):
         if instrument_type not in ["bse_cm", "cde_fo", "mcx_fo", "nse_cm", "nse_fo"]:
-            raise KotakNeoApiError("404", 404, "Instrument Type Does Not exists", "")
+            raise KotakNeoApiError("404", "Instrument Type Does Not exists")
 
         if not os.path.exists(f"neo_symbol/{localdate()}/{instrument_type}.csv"):
             await self.download_files()

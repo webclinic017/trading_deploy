@@ -41,10 +41,14 @@ async def http_request(
                 async with client.get(
                     url, headers=headers, params=query_params
                 ) as resp:
-                    if resp.headers["Content-Type"] == "application/json":
+                    if resp.headers["Content-Type"] in [
+                        "application/json",
+                        "application/json; charset=UTF-8",
+                    ]:
                         return resp.status, await resp.json(), resp.cookies
                     elif resp.headers["Content-Type"] == "text/csv":
                         return resp.status, await resp.text(), resp.cookies
+                    
             case "PUT":
                 async with client.put(
                     url, headers=headers, data=json.dumps(payload)

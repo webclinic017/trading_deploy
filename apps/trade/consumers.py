@@ -8,12 +8,162 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from apps.trade.models import DeployedOptionStrategy, DeployedOptionStrategyUser
+from django_pandas.io import read_frame
+from apps.trade.tasks import get_all_user_kotak_open_positions
+from utils.multi_broker import Broker as MultiBroker
+
+
+async def adjust_positions(username=None, broker=None):
+    await get_all_user_kotak_open_positions()
+    df = await quantity_mistmatch()
+    instruments = cache.get("OPTION_INSTRUMENTS")
+
+    df["difference_qty"] = df["expected_qty"] - df["net_qty"]
+
+    df = df[df["difference_qty"] != 0].reset_index(drop=True)
+
+    if username:
+        df = df[(df["username"] == username) & (df['broker_name'] == broker)]
+
+    buy = df[df["difference_qty"] > 0].copy()
+    sell = df[df["difference_qty"] < 0].copy()
+
+    order_objs = []
+    for _, row in buy.iterrows():
+        order = await MultiBroker(row["username"], row["broker_name"])
+        await order.initiate_session()
+        data = instruments[instruments["tradingsymbol"] == row["tradingsymbol"]].iloc[0]
+        order_objs.append(
+            order.place_and_chase_order(
+                instrument_name="BANKNIFTY",
+                strike=float(data.strike),
+                option_type=data.instrument_type,
+                transaction_type="BUY",
+                quantity=int(abs(row["difference_qty"])),
+                expected_price=float(data.last_price),
+                initial_slippage=10,
+                slippage=10,
+            )
+        )
+
+    await asyncio.gather(*order_objs)
+
+    order_objs = []
+    for _, row in sell.iterrows():
+        order = await MultiBroker(row["username"], row["broker_name"])
+        await order.initiate_session()
+        data = instruments[instruments["tradingsymbol"] == row["tradingsymbol"]].iloc[0]
+        order_objs.append(
+            order.place_and_chase_order(
+                instrument_name="BANKNIFTY",
+                strike=float(data.strike),
+                option_type=data.instrument_type,
+                transaction_type="SELL",
+                quantity=int(abs(row["difference_qty"])),
+                expected_price=float(data.last_price),
+                initial_slippage=10,
+                slippage=10,
+            )
+        )
+
+    await asyncio.gather(*order_objs)
+    await get_all_user_kotak_open_positions()
+
+    return df
+
+
+async def quantity_mistmatch(df=None):
+    if df is None:
+        df = await calculate_live_pnl()
+    user_in_cache = [
+        x["user"].username for x in cache.get("deployed_strategies", {}).get("1", {}).get("user_params", [])
+    ]
+    user_in_cache_quantity = {
+        x["user"].username: [x["quantity_multiple"], x["order_obj"]]
+        for x in cache.get("deployed_strategies", {}).get("1", {}).get("user_params", [])
+    }
+    quantity_map = (
+        df.groupby(["username", "tradingsymbol"]).agg({"net_qty": "sum", "broker_name": "first"}).reset_index()
+    )
+
+    tradingsymbols = cache.get("1_tradingsymbol")
+
+    tradingsymbol_map = []
+    broker_map = {}
+    for key, row in tradingsymbols.items():
+        for user in user_in_cache:
+            data = []
+            qty = user_in_cache_quantity[user][0][key]
+            order_obj = user_in_cache_quantity[user][1]
+            broker = order_obj.broker_name
+            broker_map[order_obj.broker_name] = broker
+            if row["pe_tradingsymbol"]:
+                data.append(
+                    {
+                        "username": user,
+                        "broker_name": order_obj.broker_name,
+                        "expected_qty": -qty,
+                        "tradingsymbol": row["pe_tradingsymbol"],
+                    }
+                )
+
+            if row["ce_tradingsymbol"]:
+                data.append(
+                    {
+                        "username": user,
+                        "broker_name": order_obj.broker_name,
+                        "expected_qty": -qty,
+                        "tradingsymbol": row["ce_tradingsymbol"],
+                    }
+                )
+
+            tradingsymbol_map.extend(data)
+
+    expected_qty_df = pd.DataFrame(
+        tradingsymbol_map, columns=["username", "broker_name", "expected_qty", "tradingsymbol"]
+    )
+    expected_qty_df = (
+        expected_qty_df.groupby(["username", "broker_name", "tradingsymbol"])
+        .agg({"expected_qty": "sum"})
+        .reset_index()
+    )
+    quantity_map_df = pd.merge(
+        quantity_map, expected_qty_df, on=["username", "broker_name", "tradingsymbol"], how="outer"
+    ).fillna(0)
+
+    return quantity_map_df
 
 
 async def calculate_live_pnl():
-    instruments = cache.get("OPTION_INSTRUMENTS")
+    instruments = cache.get(
+        "OPTION_INSTRUMENTS",
+        pd.DataFrame(
+            columns=[
+                "tradingsymbol",
+                "instrument_token",
+                "last_price",
+                "exchange_timestamp",
+                "last_trade_time",
+                "oi",
+            ]
+        ),
+    )
 
-    df = cache.get("OPEN_POSITION")
+    df = cache.get(
+        "OPEN_POSITION",
+        pd.DataFrame(
+            columns=[
+                "username",
+                "broker_name",
+                "margin",
+                "tradingsymbol",
+                "sell_value",
+                "buy_value",
+                "net_qty",
+            ]
+        ),
+    )
+
     df = pd.merge(df, instruments, on="tradingsymbol")
     df["pnl"] = df["sell_value"] - df["buy_value"] + (df["net_qty"] * df["last_price"])
     df["ce_buy_qty"] = np.where(df["tradingsymbol"].str.contains("CE") & (df["net_qty"] > 0), df["net_qty"], 0)
@@ -22,6 +172,18 @@ async def calculate_live_pnl():
     df["pe_sell_qty"] = np.where(df["tradingsymbol"].str.contains("PE") & (df["net_qty"] < 0), df["net_qty"] * -1, 0)
 
     return df
+
+
+async def get_dummy_points():
+    df = await calculate_live_pnl()
+    df = df[
+        ["username", "broker_name", "tradingsymbol", "sell_value", "buy_value", "net_qty", "pnl", "last_price"]
+    ].copy()
+    df_square_of_positions = df[df["net_qty"] == 0].sort_values(["username", "net_qty", "tradingsymbol"])
+    df_open_positions = df[df["net_qty"] != 0].sort_values(["username", "net_qty", "tradingsymbol"])
+    df = pd.concat([df_open_positions, df_square_of_positions], ignore_index=True)
+
+    return round(df[df['username'] == 'dummy'].pnl.sum() / 75, 2)
 
 
 class ChatConsumer(AsyncJsonWebsocketConsumer):
@@ -37,8 +199,8 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
         df["ce_oi_change"] = df["ce_total_oi"].pct_change(periods=72).fillna(0.0).replace(np.inf, -1.0)
         df["pe_oi_change"] = df["pe_total_oi"].pct_change(periods=72).fillna(0.0).replace(np.inf, -1.0)
-        df["ce_oi_change_3min"] = df["ce_total_oi"].pct_change(periods=24).fillna(0.0).replace(np.inf, -1.0)
-        df["pe_oi_change_3min"] = df["pe_total_oi"].pct_change(periods=24).fillna(0.0).replace(np.inf, -1.0)
+        df["ce_oi_change_3min"] = df["ce_total_oi"].pct_change(periods=36).fillna(0.0).replace(np.inf, -1.0)
+        df["pe_oi_change_3min"] = df["pe_total_oi"].pct_change(periods=36).fillna(0.0).replace(np.inf, -1.0)
 
         data = {
             "data": [
@@ -320,7 +482,9 @@ class LivekPositionConsumer(AsyncJsonWebsocketConsumer):
     async def return_live_pnl(self):
         while True:
             df = await calculate_live_pnl()
-            df = df[["username", "broker_name", "tradingsymbol", "sell_value", "buy_value", "net_qty", "pnl", "last_price"]].copy()
+            df = df[
+                ["username", "broker_name", "tradingsymbol", "sell_value", "buy_value", "net_qty", "pnl", "last_price"]
+            ].copy()
             df_square_of_positions = df[df["net_qty"] == 0].sort_values(["username", "net_qty", "tradingsymbol"])
             df_open_positions = df[df["net_qty"] != 0].sort_values(["username", "net_qty", "tradingsymbol"])
             df = pd.concat([df_open_positions, df_square_of_positions], ignore_index=True)
@@ -415,10 +579,13 @@ class LivePnlConsumer(AsyncJsonWebsocketConsumer):
         while True:
             pts = await self.get_jegan_pts(parameters)
             df = await calculate_live_pnl()
+            broker_id_map = {"dummy": 0, "kotak_neo": 1, "kotak": 1}
+            df["broker_id"] = df["broker_name"].map(lambda x: broker_id_map.get(x, 1))
             df = (
-                df.groupby(["broker_name", "username"])
+                df.groupby(["broker_id", "username"])
                 .agg(
                     {
+                        "broker_name": "first",
                         "pnl": "sum",
                         "ce_buy_qty": "sum",
                         "ce_sell_qty": "sum",
@@ -434,6 +601,152 @@ class LivePnlConsumer(AsyncJsonWebsocketConsumer):
             df["pnl_points"] = (df["pnl"] / df["quantity"]) - df["jegan_pts"]
             df = df.reset_index()
             df["index"] = df["index"] + 1
+            await self.send_json(df.to_dict("records"))
+            ct = timezone.localtime()
+            second = (ct.second // 1) * 1
+            loop_time = ct.replace(second=second, microsecond=0) + dt.timedelta(seconds=1)
+            await asyncio.sleep((loop_time - ct).total_seconds())
+
+
+class StopLossDifference(AsyncJsonWebsocketConsumer):
+    async def connect(self):
+        await self.accept()
+        if self.scope["user"].is_anonymous:
+            await self.close(code=401)
+            return
+        self.pk = self.scope["url_route"]["kwargs"]["pk"]
+
+        if not self.pk != 1:
+            await self.close(code=401)
+            return
+        
+        while True:
+            dummy_pts = await get_dummy_points()
+            stop_loss = cache.get("STRATEGY_STOP_LOSS")
+            await self.send_json({'stop_loss_difference': round(dummy_pts + stop_loss)})
+            await asyncio.sleep(1)
+
+
+class LivePnlConsumerStrategy(AsyncJsonWebsocketConsumer):
+    async def connect(self):
+        await self.accept()
+        if self.scope["user"].is_anonymous:
+            await self.close(code=401)
+            return
+        self.pk = self.scope["url_route"]["kwargs"]["pk"]
+        self.quantity_df = pd.DataFrame(
+            [
+                {
+                    "username": row.user.username,
+                    "quantity": (row.parent.lot_size * row.lots),
+                    "broker_name": row.broker,
+                }
+                async for row in DeployedOptionStrategyUser.objects.filter(parent__id=self.pk)
+            ]
+        )
+        await self.get_jegan_qty()
+        await self.return_live_pnl()
+
+    async def get_jegan_qty(self):
+        data = (await DeployedOptionStrategy.objects.filter(pk=2).afirst()).users.all()
+        self.jegan_map = {}
+        for row in data:
+            self.jegan_map[row.user.username] = row.lots
+
+    async def get_jegan_pts(self, parameters):
+        tradingsymbol = cache.get(f"2_tradingsymbol", {})
+        insturments = cache.get("OPTION_GREEKS_INSTRUMENTS")
+        pts = 0
+        for row in parameters:
+            symbol = tradingsymbol.get(row["name"], {})
+            if symbol:
+                row["entered"] = symbol["entered"]
+                row["exited"] = symbol["exited"]
+                row["ce_exited"] = symbol["ce_exited"]
+                row["pe_exited"] = symbol["pe_exited"]
+                row["pe_entry_price"] = symbol["pe_entry_price"]
+                row["ce_entry_price"] = symbol["ce_entry_price"]
+                row["ce_sl"] = symbol["ce_sl"]
+                row["pe_sl"] = symbol["pe_sl"]
+                row["pts"] = 0
+
+                row["modified_sl_to_cost"] = symbol.get("modified_sl_to_cost", False)
+
+                if symbol["ce_tradingsymbol"]:
+                    ce = insturments[insturments["tradingsymbol"] == symbol["ce_tradingsymbol"]].iloc[0]
+                    if symbol.get("ce_exit_price"):
+                        row["ce_exit_price"] = symbol["ce_exit_price"]
+                        row["pts"] += float(row["ce_entry_price"]) - float(row["ce_exit_price"])
+                    else:
+                        row["pts"] += float(row["ce_entry_price"]) - float(ce["last_price"])
+                    row["ce_strike"] = ce.strike
+
+                if symbol["pe_tradingsymbol"]:
+                    pe = insturments[insturments["tradingsymbol"] == symbol["pe_tradingsymbol"]].iloc[0]
+                    if symbol.get("pe_exit_price"):
+                        row["pe_exit_price"] = symbol["pe_exit_price"]
+                        row["pts"] += float(row["pe_entry_price"]) - float(row["pe_exit_price"])
+                    else:
+                        row["pts"] += float(row["pe_entry_price"]) - float(pe["last_price"])
+                    row["pe_strike"] = pe.strike
+
+                row["pts"] = round(row["pts"], 2)
+                pts += row["pts"]
+
+        return pts
+
+    async def disconnect(self, close_code):
+        pass
+
+    async def return_live_pnl(self):
+        parameters = sorted(
+            [
+                {
+                    "name": row.name,
+                    "entry_time": row.parameters["entry_time"],
+                    "exit_time": row.parameters["exit_time"],
+                    "trail": row.parameters["trail"],
+                    "sl_pct": row.parameters["sl_pct"],
+                }
+                for row in (await DeployedOptionStrategy.objects.filter(pk=2).afirst()).parameters.all()
+            ],
+            key=lambda x: int(x["name"]),
+        )
+        while True:
+            pts = await self.get_jegan_pts(parameters)
+            df = await calculate_live_pnl()
+            quantity_map_df = await quantity_mistmatch(df)
+            quantity_map_df["mismatch"] = np.where(quantity_map_df["expected_qty"] != quantity_map_df["net_qty"], 1, 0)
+            quantity_mismatch_df = quantity_map_df.groupby("username").agg({"mismatch": "max"})
+            df = (
+                df.groupby(["username"])
+                .agg(
+                    {
+                        "broker_name": "first",
+                        "pnl": "sum",
+                        "ce_buy_qty": "sum",
+                        "ce_sell_qty": "sum",
+                        "pe_buy_qty": "sum",
+                        "pe_sell_qty": "sum",
+                        "margin": "first",
+                    }
+                )
+                .reset_index()
+            )
+            df = pd.merge(self.quantity_df, df, on=["username", "broker_name"], how="left")
+            df.fillna(0, inplace=True)
+            df["jegan_pnl"] = df["username"].apply(lambda x: self.jegan_map.get(x, 0) * pts * 25)
+            df["jegan_pts"] = df["jegan_pnl"] / df["quantity"]
+            df["pnl_points"] = (df["pnl"] / df["quantity"]) - df["jegan_pts"]
+            df = df.reset_index()
+            df.fillna(0, inplace=True)
+            df["index"] = df["index"] + 1
+            user_in_cache = [
+                x["user"].username for x in cache.get("deployed_strategies", {}).get("1", {}).get("user_params", [])
+            ]
+            df["in_cache"] = df["username"].apply(lambda x: True if x in user_in_cache else False)
+            df = pd.merge(df, quantity_mismatch_df, on="username", how="left").fillna(0)
+
             await self.send_json(df.to_dict("records"))
             ct = timezone.localtime()
             second = (ct.second // 1) * 1

@@ -39,6 +39,7 @@ class KotakSecuritiesApi(AsyncObj):
         self.session_path = "session/1.0"
         self.order_api = "orders/1.0"
         self.report_api = "reports/1.0"
+        self.margin_api = "margin/1.0"
         self.positions_api = "positions/1.0"
 
         self.status_map = {
@@ -195,6 +196,8 @@ class KotakSecuritiesApi(AsyncObj):
             payload=payload,
             payload_decode=True,
         )
+
+        print(status, resp)
 
         if status == 200:
             success = resp.get("success", resp.get("Success", {}))
@@ -655,3 +658,29 @@ class KotakSecuritiesApi(AsyncObj):
         )
 
         return status, resp, cookie
+
+    async def margin(self):
+        if not hasattr(self, "session_token") and not self.session_token:
+            raise KotakSecuritiesApiError("No session token found. Please invoke 'login' function first")
+
+        url = f"{self.host}/{self.margin_api}/margin-mini"
+        
+        headers = {
+            "accept": "application/json",
+            "consumerKey": self.consumer_key,
+            "sessionToken": self.session_token,
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.access_token}",
+        }
+
+        status, resp, cookie = await http_request(
+            method="GET",
+            url=url,
+            headers=headers,
+        )
+
+        if status == 200:
+            success = resp.get("success", resp.get("Success", {}))
+            error = resp.get("fault", {})
+
+            return success['derivatives'][0]['options']['marginAvailable']

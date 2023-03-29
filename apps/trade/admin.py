@@ -44,9 +44,17 @@ class DeployedOptionStrategyAdmin(admin.ModelAdmin):
 
 @admin.register(DummyOrder)
 class DummyOrderAdmin(admin.ModelAdmin):
-    pass
+    list_display = (
+        '__str__',
+        'tradingsymbol',
+        'order_timestamp',
+        'transaction_type',
+        'price',
+    )
 
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    pass
+    list_display = (
+        '__str__',
+    )

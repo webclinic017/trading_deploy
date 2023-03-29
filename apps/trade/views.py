@@ -7,6 +7,7 @@ from django.views.generic.detail import DetailView
 from django.views.generic.list import ListView
 
 from apps.trade.models import DeployedOptionStrategy, OptionStrategy
+from django.core.cache import cache
 
 
 # Create your views here.
@@ -35,6 +36,7 @@ class DeployeOptionStrategyDetailView(NavView, DetailView):
     def get_context_data(self, *args, **kwargs):
         context = super(DeployeOptionStrategyDetailView, self).get_context_data(*args, **kwargs)
         context["title"] = context["object"].strategy_name
+        context['stop_loss'] = cache.get("STRATEGY_STOP_LOSS", 0)
         deployed_option_strategy: DeployedOptionStrategy = context["object"]
         if deployed_option_strategy.strategy.strategy_type == "ce_pe_with_sl":
             self.template_name: str = "ce_pe_with_sl_detail_view.html"

@@ -148,3 +148,5 @@ static/*
 services/*
 pid/*
 socks/*
+deployment.py
+error.py

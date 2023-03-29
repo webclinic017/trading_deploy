@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 
 from apps.trade.models import DeployedOptionStrategy
 from apps.trade.square_off_all import square_off_all_user
+from apps.trade.square_off_all import square_off_all
 from apps.trade.strategy.dynamic_shifting_with_exit_one_side import (
     Strategy as OneSideExitStrategy,
 )
@@ -16,6 +17,8 @@ from apps.trade.strategy.straddles_with_sl import Strategy as StraddleWithSL
 from apps.trade.tasks import get_all_user_open_positions
 from utils import divide_and_list, send_notifications
 from utils.multi_broker import Broker as MultiBroker
+from apps.trade.consumers import adjust_positions
+
 
 User = get_user_model()
 
@@ -428,6 +431,27 @@ class ExitUserAlgo(APIView):
         return Response({"message": "success"})
 
 
+class SquareOffUser(APIView):
+    permission_classes = (IsAuthenticated,)
+
+    def post(self, request, format=None):
+        row = request.data
+        deployed_strategies = cache.get("deployed_strategies", {}).copy()
+
+        for _, strategy in deployed_strategies.items():
+            user_params = strategy["user_params"]
+            updated_user_params = [
+                user_param for user_param in user_params if user_param["user"].username != row["username"]
+            ]
+            strategy["user_params"] = updated_user_params
+
+        cache.set("deployed_strategies", deployed_strategies)
+
+        async_to_sync(square_off_all)(row["username"], row["broker"])
+
+        return Response({"message": "success"})
+
+
 class EnterUserAlgo(APIView):
     permission_classes = (IsAuthenticated,)
 
@@ -491,6 +515,25 @@ class SquareOffMarket(APIView):
         async_to_sync(square_off_all_user)(True)
         return Response({"message": "success"})
 
+class AdjustAllPosition(APIView):
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request, format=None):
+        async_to_sync(adjust_positions)()
+        return Response({"message": "success"})
+
+
+class AdjustUserPosition(APIView):
+    permission_classes = (IsAuthenticated,)
+
+    def post(self, request, format=None):
+        row = request.data
+        username = row['username']
+        broker = row['broker']
+
+        async_to_sync(adjust_positions)(username, broker)
+        return Response({"message": "success"})
+
 
 class UserEntry(APIView):
     permission_classes = (IsAuthenticated,)
@@ -535,3 +578,4 @@ class UserEntry(APIView):
                 # async_to_sync(send_notifications)(opt_strategy.strategy_name.upper(), "EXITED ALGO!", "alert-danger")
 
         return Response(str(user_param_user_obj))
+

@@ -9,7 +9,7 @@ from django.utils import timezone
 from apps.integration.models import BrokerApi, KotakNeoApi, KotakSecuritiesApi
 from utils.async_obj import AsyncObj
 from utils.broker.dummy import DummyApi as DApi
-from utils.broker.kotak_neo import KotakNeoApi as KNApi
+from utils.broker.kotak_neo import KotakNeoApi as KNApi, KotakNeoApiError as KNApiError
 from utils.broker.kotak_securities import KotakSecuritiesApi as KSApi
 from utils.broker.kotak_securities import KotakSecuritiesApiError as KSError
 
@@ -112,18 +112,32 @@ class Broker(AsyncObj):
                 expected_price = expected_price + slippage
             else:
                 expected_price = expected_price - slippage
+        
+        expected_price = max(0, expected_price)
 
         match self.broker_name:
             case self.KOTAK_NEO:
-                return await self.api.place_order(
-                    tradingsymbol=row.tradingsymbol,  # ts
-                    quantity=str(quantity),  # qt
-                    transaction_type=self.KOTAK_NEO_TRANSACTION_TYPE_MAP[transaction_type],  # tt
-                    price=str(expected_price),  # pr
-                    order_type="L" if expected_price else "M",  # pt
-                    exchange_segment="nse_fo",  # es
-                    product_code=self.KOTAK_NEO_PRODUCT_CODE_MAP[order_type],  # pc
-                )
+                try:
+                    return await self.api.place_order(
+                        tradingsymbol=row.tradingsymbol,  # ts
+                        quantity=str(quantity),  # qt
+                        transaction_type=self.KOTAK_NEO_TRANSACTION_TYPE_MAP[transaction_type],  # tt
+                        price=str(expected_price),  # pr
+                        order_type="L" if expected_price else "MKT",  # pt
+                        exchange_segment="nse_fo",  # es
+                        product_code=self.KOTAK_NEO_PRODUCT_CODE_MAP[order_type],  # pc
+                    )
+                except KNApiError as ke:
+                    if ke.code == 40000:
+                        return await self.place_order(
+                            kite_instrument_token,
+                            transaction_type,
+                            quantity,
+                            expected_price,
+                            order_type,
+                            slippage,
+                        )
+                    print(ke)
             case self.KOTAK:
                 try:
                     return await self.api.place_order(
@@ -174,17 +188,31 @@ class Broker(AsyncObj):
 
         match self.broker_name:
             case self.KOTAK_NEO:
-                return await self.api.modify_order(
-                    order_id=order_id,  # no
-                    token=row.kotak_neo_instrument_token,  # tk
-                    tradingsymbol=row.tradingsymbol,  # ts
-                    quantity=str(quantity),  # qt
-                    transaction_type=self.KOTAK_NEO_TRANSACTION_TYPE_MAP[transaction_type],  # tt
-                    price=str(expected_price),  # pr
-                    order_type="L" if expected_price else "M",  # pt
-                    exchange_segment="nse_fo",  # es
-                    product_code=self.KOTAK_NEO_PRODUCT_CODE_MAP[order_type],  # pc
-                )
+                try:
+                    return await self.api.modify_order(
+                        order_id=order_id,  # no
+                        token=row.kotak_neo_instrument_token,  # tk
+                        tradingsymbol=row.tradingsymbol,  # ts
+                        quantity=str(quantity),  # qt
+                        transaction_type=self.KOTAK_NEO_TRANSACTION_TYPE_MAP[transaction_type],  # tt
+                        price=str(expected_price),  # pr
+                        order_type="L" if expected_price else "M",  # pt
+                        exchange_segment="nse_fo",  # es
+                        product_code=self.KOTAK_NEO_PRODUCT_CODE_MAP[order_type],  # pc
+                    )
+                except KNApiError as ke:
+                    if ke.code == 40000:
+                        await asyncio.sleep(1)
+                        return await self.modify_order(
+                            kite_instrument_token,
+                            order_id,
+                            quantity,
+                            transaction_type,
+                            expected_price,
+                            order_type,
+                            slippage,
+                        )
+                    print(ke)
             case self.KOTAK:
                 try:
                     return await self.api.modify_order(
@@ -244,6 +272,7 @@ class Broker(AsyncObj):
             order = await self.place_order(
                 kite_instrument_token, transaction_type, quantity, expected_price, slippage=initial_slippage
             )
+            print(order)
             try:
                 order_id = order["order_id"]
                 error_message = order.get("error_message")
@@ -314,7 +343,6 @@ class Broker(AsyncObj):
         }
 
     async def calculate_live_pnl(self):
-        print(self.broker_name)
         match self.broker_name:
             case self.KOTAK_NEO:
                 df = await self.api.positions()
@@ -382,6 +410,16 @@ class Broker(AsyncObj):
                     expected_price=0 if market else x["last_price"],
                     initial_slippage=10,
                     slippage=5,
+                    order_in_limit=not market
                 )
             )
         return await asyncio.gather(*data)
+
+    async def margin(self):
+        match self.broker_name:
+            case self.KOTAK_NEO:
+                return await self.api.margin()
+            case self.KOTAK:
+                return await self.api.margin()
+            case self.DUMMY:
+                return await self.api.margin()
