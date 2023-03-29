@@ -6,9 +6,9 @@ import pandas as pd
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.core.cache import cache
 from django.utils import timezone
+from django_pandas.io import read_frame
 
 from apps.trade.models import DeployedOptionStrategy, DeployedOptionStrategyUser
-from django_pandas.io import read_frame
 from apps.trade.tasks import get_all_user_kotak_open_positions
 from utils.multi_broker import Broker as MultiBroker
 
@@ -86,7 +86,7 @@ async def quantity_mistmatch(df=None):
         df.groupby(["username", "tradingsymbol"]).agg({"net_qty": "sum", "broker_name": "first"}).reset_index()
     )
 
-    tradingsymbols = cache.get("1_tradingsymbol")
+    tradingsymbols = cache.get("1_tradingsymbol", {})
 
     tradingsymbol_map = []
     broker_map = {}
@@ -622,7 +622,7 @@ class StopLossDifference(AsyncJsonWebsocketConsumer):
         
         while True:
             dummy_pts = await get_dummy_points()
-            stop_loss = cache.get("STRATEGY_STOP_LOSS")
+            stop_loss = cache.get("STRATEGY_STOP_LOSS", 0)
             await self.send_json({'stop_loss_difference': round(dummy_pts + stop_loss)})
             await asyncio.sleep(1)
 

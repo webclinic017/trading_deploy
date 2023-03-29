@@ -25,10 +25,10 @@
         "**/node_modules/*/**": true
     },
     "files.exclude": {
-        "config": false,
-        // "logs": true,
+        "config": true,
+        "logs": true,
         "pid": true,
-        // "services": false,
+        "services": true,
         "socks": true,
         "static": true
     },

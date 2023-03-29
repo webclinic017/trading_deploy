@@ -1,4 +1,5 @@
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.shortcuts import redirect, render
 from django.utils.decorators import method_decorator
 from django.views.generic import TemplateView
@@ -7,7 +8,6 @@ from django.views.generic.detail import DetailView
 from django.views.generic.list import ListView
 
 from apps.trade.models import DeployedOptionStrategy, OptionStrategy
-from django.core.cache import cache
 
 
 # Create your views here.
@@ -37,6 +37,7 @@ class DeployeOptionStrategyDetailView(NavView, DetailView):
         context = super(DeployeOptionStrategyDetailView, self).get_context_data(*args, **kwargs)
         context["title"] = context["object"].strategy_name
         context['stop_loss'] = cache.get("STRATEGY_STOP_LOSS", 0)
+        context['entry_time'] = cache.get('ENTRY_TIME').strftime("%H:%M")
         deployed_option_strategy: DeployedOptionStrategy = context["object"]
         if deployed_option_strategy.strategy.strategy_type == "ce_pe_with_sl":
             self.template_name: str = "ce_pe_with_sl_detail_view.html"

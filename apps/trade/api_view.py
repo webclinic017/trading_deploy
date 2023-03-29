@@ -7,9 +7,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.trade.consumers import adjust_positions
 from apps.trade.models import DeployedOptionStrategy
-from apps.trade.square_off_all import square_off_all_user
-from apps.trade.square_off_all import square_off_all
+from apps.trade.square_off_all import square_off_all, square_off_all_user
 from apps.trade.strategy.dynamic_shifting_with_exit_one_side import (
     Strategy as OneSideExitStrategy,
 )
@@ -17,8 +17,6 @@ from apps.trade.strategy.straddles_with_sl import Strategy as StraddleWithSL
 from apps.trade.tasks import get_all_user_open_positions
 from utils import divide_and_list, send_notifications
 from utils.multi_broker import Broker as MultiBroker
-from apps.trade.consumers import adjust_positions
-
 
 User = get_user_model()
 
